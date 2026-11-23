@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import dev.lumo.gallery.core.model.ArchiveFormat
 import dev.lumo.gallery.core.model.Library
+import dev.lumo.gallery.core.util.AppLog
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -24,6 +25,11 @@ class ArchiveReaderFactory(
     suspend fun open(library: Library, password: String?): ArchiveReader = withContext(io) {
         val uri = library.archiveUri?.let(Uri::parse)
             ?: throw UnsupportedArchiveException("图库缺少压缩包地址")
+        AppLog.i(
+            "Archive",
+            "打开压缩包 library=${library.id} format=${library.archiveFormat} " +
+                "password=${!password.isNullOrEmpty()} uri=$uri"
+        )
         when (library.archiveFormat) {
             ArchiveFormat.ZIP -> openZip(library, uri, password)
             ArchiveFormat.SEVEN_Z -> openSevenZ(library, uri, password)

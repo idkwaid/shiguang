@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,7 +43,7 @@ import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(onOpenLogs: () -> Unit = {}) {
     val container = LocalAppContainer.current
     val scope = rememberCoroutineScope()
     val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(
@@ -114,6 +116,13 @@ fun SettingsScreen() {
                         }
                     }) { Text("清空") }
                 }
+            )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("运行日志") },
+                supportingContent = { Text("排查问题用；可查看/分享最近日志，崩溃堆栈也会记录") },
+                leadingContent = { Icon(Icons.Outlined.BugReport, contentDescription = null) },
+                modifier = Modifier.clickable { onOpenLogs() }
             )
             HorizontalDivider()
             ListItem(

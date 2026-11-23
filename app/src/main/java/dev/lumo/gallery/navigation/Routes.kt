@@ -14,6 +14,7 @@ object Routes {
     const val CLEANUP = "cleanup"
     const val EDITOR = "editor/{libraryId}/{itemId}"
     const val PRIVATE = "private"
+    const val LOGS = "logs"
     const val VIEWER = "viewer/{libraryId}/{itemId}"
 
     fun library(libraryId: String) = "library/$libraryId"

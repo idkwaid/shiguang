@@ -8,6 +8,7 @@ import dev.lumo.gallery.core.data.repo.MediaRepository
 import dev.lumo.gallery.core.data.source.MediaStreamProvider
 import dev.lumo.gallery.core.image.Thumbnailer
 import dev.lumo.gallery.core.model.MediaItem
+import dev.lumo.gallery.core.util.AppLog
 import dev.lumo.gallery.core.ui.viewModelFactoryOf
 import dev.lumo.gallery.di.AppContainer
 import kotlinx.coroutines.Dispatchers

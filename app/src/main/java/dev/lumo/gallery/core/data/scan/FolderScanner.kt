@@ -7,6 +7,7 @@ import dev.lumo.gallery.core.data.db.LumoDatabase
 import dev.lumo.gallery.core.data.source.FolderWalker
 import dev.lumo.gallery.core.data.source.PermissionLostException
 import dev.lumo.gallery.core.data.source.SafPermissions
+import dev.lumo.gallery.core.util.AppLog
 import dev.lumo.gallery.core.model.ScanProgress
 import dev.lumo.gallery.core.model.ScanStatus
 import kotlinx.coroutines.CoroutineDispatcher
@@ -33,7 +34,9 @@ class FolderScanner(
         val treeUri: Uri = library.treeUri?.let(Uri::parse)
             ?: return@withContext ScanOutcome.Failure("图库缺少目录地址")
 
+        AppLog.d("Scan", "FolderScanner library=$libraryId tree=$treeUri rel=${library.treeRootRelPath}")
         if (!permissions.hasReadPermission(treeUri)) {
+            AppLog.w("Scan", "FolderScanner 授权失效 library=$libraryId")
             progressBus.update(
                 ScanProgress(libraryId, ScanProgress.Phase.FAILED, message = "目录授权已失效")
             )
@@ -81,6 +84,7 @@ class FolderScanner(
                 )
             }
         } catch (e: PermissionLostException) {
+            AppLog.e("Scan", "FolderScanner 遍历失败 library=$libraryId", e)
             db.libraryDao().updateScanResult(
                 libraryId, library.lastScanAt, library.itemCount, library.coverItemId,
                 ScanStatus.PERMISSION_LOST.name, e.message, false

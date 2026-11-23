@@ -4,6 +4,7 @@ import dev.lumo.gallery.core.data.db.LumoDatabase
 import dev.lumo.gallery.core.data.db.toModel
 import dev.lumo.gallery.core.data.source.MediaStreamProvider
 import dev.lumo.gallery.core.model.DateSource
+import dev.lumo.gallery.core.util.AppLog
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +43,7 @@ class ImageEnricher(
     }
 
     private suspend fun enrich(libraryId: String) {
+        AppLog.d("Thumb", "开始富化 library=$libraryId")
         val libraryEntity = db.libraryDao().getById(libraryId) ?: return
         val library = libraryEntity.toModel()
         while (true) {
@@ -66,6 +68,10 @@ class ImageEnricher(
                         thumbReady = true
                     )
                 } else {
+                    AppLog.w(
+                        "Thumb",
+                        "解码失败 id=${item.id} name=${item.displayName} mime=${item.mime} size=${item.sizeBytes}"
+                    )
                     // 解码失败也要标记“已尝试”，否则会无限重试；UI 用 hasDimensions/文件存在性显示占位
                     db.mediaDao().updateEnrichment(
                         id = item.id,

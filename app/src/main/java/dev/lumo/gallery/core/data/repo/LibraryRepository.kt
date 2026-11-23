@@ -25,6 +25,7 @@ import dev.lumo.gallery.core.model.LibraryType
 import dev.lumo.gallery.core.model.ScanProgress
 import dev.lumo.gallery.core.model.ScanStatus
 import dev.lumo.gallery.core.model.SortMode
+import dev.lumo.gallery.core.util.AppLog
 import dev.lumo.gallery.core.util.MimeTypes
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -95,12 +96,13 @@ class LibraryRepository(
         treeUri: Uri,
         onProgress: (String) -> Unit = {}
     ): GroupedImportResult = withContext(Dispatchers.IO) {
+        // 必须无条件持久化：选完文件夹时拿的是临时授权，checkUriPermission 会误报为已授权
+        permissions.takePersistable(treeUri, write = true)
         if (!permissions.hasReadPermission(treeUri)) {
-            permissions.takePersistable(treeUri, write = true)
-        }
-        if (!permissions.hasReadPermission(treeUri)) {
+            AppLog.e("Import", "分组导入拿不到持久化读权限: $treeUri")
             return@withContext GroupedImportResult.Failed("无法获得该文件夹的读取权限")
         }
+        AppLog.i("Import", "开始分组导入: $treeUri")
         val rootName = queryTreeDisplayName(treeUri) ?: "文件夹"
         onProgress("正在分析目录结构…")
         val summary = try {
@@ -172,6 +174,11 @@ class LibraryRepository(
         }
 
         created.forEach { db.libraryDao().upsert(it.toEntity()) }
+        AppLog.i(
+            "Import",
+            "分组导入完成: 目录=${summary.dirsWithDirectImages.size} 压缩包=${summary.archives.size} " +
+                "新建=${created.size}（文件夹 $folderCount / 压缩包 $archiveCount）"
+        )
         if (created.isEmpty()) {
             GroupedImportResult.Empty
         } else {
@@ -215,12 +222,12 @@ class LibraryRepository(
      * 添加文件夹图库：申请持久化授权 → 去重 → 建库 → 首次扫描。
      */
     suspend fun addFolder(treeUri: Uri): AddLibraryResult {
+        permissions.takePersistable(treeUri, write = true)
         if (!permissions.hasReadPermission(treeUri)) {
-            permissions.takePersistable(treeUri, write = true)
-        }
-        if (!permissions.hasReadPermission(treeUri)) {
+            AppLog.e("Import", "整体导入拿不到持久化读权限: $treeUri")
             return AddLibraryResult.Failed("无法获得该文件夹的读取权限")
         }
+        AppLog.i("Import", "整体导入: $treeUri")
         db.libraryDao().findFolderByUri(treeUri.toString())?.let {
             return AddLibraryResult.Duplicate(it.toModel())
         }
@@ -252,12 +259,12 @@ class LibraryRepository(
      * 导入压缩包：建 ARCHIVE 图库并返回，扫描由调用方触发（可能先要密码）。
      */
     suspend fun addArchive(uri: Uri): AddLibraryResult {
+        permissions.takePersistable(uri, write = false)
         if (!permissions.hasReadPermission(uri)) {
-            permissions.takePersistable(uri, write = false)
-        }
-        if (!permissions.hasReadPermission(uri)) {
+            AppLog.e("Import", "压缩包拿不到持久化读权限: $uri")
             return AddLibraryResult.Failed("无法读取该压缩包，请重新选择")
         }
+        AppLog.i("Import", "导入压缩包: $uri")
         db.libraryDao().findArchiveByUri(uri.toString())?.let {
             return AddLibraryResult.Duplicate(it.toModel())
         }
@@ -339,7 +346,9 @@ class LibraryRepository(
 
     /** 扫描并自动触发缩略图/EXIF 富化。 */
     suspend fun scan(libraryId: String, reason: String = "手动刷新"): ScanOutcome {
+        AppLog.i("Scan", "开始扫描 library=$libraryId reason=$reason")
         val outcome = scanner.scan(libraryId, reason)
+        AppLog.i("Scan", "扫描结束 library=$libraryId reason=$reason outcome=$outcome")
         if (outcome is ScanOutcome.Success) enricher.enqueue(libraryId)
         return outcome
     }

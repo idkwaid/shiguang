@@ -6,6 +6,8 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import coil3.SingletonImageLoader
 import dev.lumo.gallery.core.data.scan.LibraryScanWorker
+import dev.lumo.gallery.BuildConfig
+import dev.lumo.gallery.core.util.AppLog
 import dev.lumo.gallery.di.AppContainer
 
 /**
@@ -19,7 +21,10 @@ class LumoApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        AppLog.init(this)
+        AppLog.i("App", "拾光启动 version=${BuildConfig.VERSION_NAME} code=${BuildConfig.VERSION_CODE}")
         container = AppContainer(this)
+        container.permissions.logCurrentPermissions()
         SingletonImageLoader.setUnsafe(container.imageLoader)
         LibraryScanWorker.schedule(this)
         // 私密空间：App 退到后台即上锁

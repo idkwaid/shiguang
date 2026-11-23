@@ -24,6 +24,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Share
@@ -88,7 +90,8 @@ fun LibraryScreen(
     libraryId: String,
     onBack: () -> Unit,
     onOpenViewer: (libraryId: String, itemId: String) -> Unit,
-    onOpenPrivate: () -> Unit = onBack
+    onOpenPrivate: () -> Unit = onBack,
+    onOpenEditor: (libraryId: String, itemId: String) -> Unit = { _, _ -> }
 ) {
     val container = LocalAppContainer.current
     val vm: LibraryViewModel = viewModel(
@@ -109,6 +112,7 @@ fun LibraryScreen(
     var actionItem by remember { mutableStateOf<MediaItem?>(null) }
     var tagItem by remember { mutableStateOf<MediaItem?>(null) }
     var deleteTarget by remember { mutableStateOf<MediaItem?>(null) }
+    var infoTarget by remember { mutableStateOf<MediaItem?>(null) }
     val scope = rememberCoroutineScope()
 
     val context = LocalContext.current
@@ -363,6 +367,28 @@ fun LibraryScreen(
                 }
                 TextButton(
                     onClick = {
+                        actionItem = null
+                        onOpenEditor(libraryId, item.id)
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                ) {
+                    Icon(Icons.Outlined.Edit, contentDescription = null)
+                    Spacer(Modifier.width(10.dp))
+                    Text("编辑")
+                }
+                TextButton(
+                    onClick = {
+                        actionItem = null
+                        infoTarget = item
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                ) {
+                    Icon(Icons.Outlined.Info, contentDescription = null)
+                    Spacer(Modifier.width(10.dp))
+                    Text("信息")
+                }
+                TextButton(
+                    onClick = {
                         val librarySnapshot = library
                         actionItem = null
                         if (librarySnapshot != null) {
@@ -399,6 +425,10 @@ fun LibraryScreen(
 
     tagItem?.let { item ->
         TagEditorDialog(mediaId = item.id, onDismiss = { tagItem = null })
+    }
+
+    infoTarget?.let { item ->
+        ImageInfoDialog(item = item, library = library, onDismiss = { infoTarget = null })
     }
 
     deleteTarget?.let { item ->
@@ -469,4 +499,63 @@ fun LibraryScreen(
             }
         )
     }
+}
+
+
+private fun formatSize(bytes: Long): String = when {
+    bytes >= 1024L * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024))
+    bytes >= 1024 -> "%.0f KB".format(bytes / 1024.0)
+    else -> "$bytes B"
+}
+
+@Composable
+private fun ImageInfoDialog(
+    item: MediaItem,
+    library: dev.lumo.gallery.core.model.Library?,
+    onDismiss: () -> Unit
+) {
+    val container = LocalAppContainer.current
+    val exif by androidx.compose.runtime.produceState<dev.lumo.gallery.core.image.ExifInfo?>(
+        initialValue = null,
+        item.id,
+        item.lastModified
+    ) {
+        value = if (library == null) null
+        else dev.lumo.gallery.core.image.ExifReader.read(container.streamProvider, library, item)
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("图片信息") },
+        text = {
+            Column {
+                Text(item.displayName, style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(8.dp))
+                val camera = listOfNotNull(exif?.make, exif?.model).joinToString(" ").trim()
+                if (camera.isNotEmpty()) Text("相机：$camera")
+                if (!exif?.lens.isNullOrBlank()) Text("镜头：${exif?.lens}")
+                if (!exif?.iso.isNullOrBlank()) Text("ISO：${exif?.iso}")
+                if (!exif?.aperture.isNullOrBlank()) Text("光圈：${exif?.aperture}")
+                if (!exif?.shutter.isNullOrBlank()) Text("快门：${exif?.shutter}")
+                if (!exif?.focalLength.isNullOrBlank()) Text("焦距：${exif?.focalLength}")
+                Text("尺寸：${if (item.width > 0) "${item.width} × ${item.height}" else "未知"}")
+                Text("大小：${formatSize(item.sizeBytes)}")
+                Text(
+                    "拍摄/修改：${
+                        dev.lumo.gallery.core.image.ExifDates.formatDateTime(
+                            item.dateTaken ?: item.lastModified
+                        )
+                    }"
+                )
+                if (exif?.hasGps == true) {
+                    Text("位置：${"%.5f, %.5f".format(exif?.latitude, exif?.longitude)}")
+                }
+                Text("格式：${item.mime}")
+                Text("路径：${item.locator}")
+                if (!item.note.isNullOrBlank()) Text("备注：${item.note}")
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("关闭") }
+        }
+    )
 }

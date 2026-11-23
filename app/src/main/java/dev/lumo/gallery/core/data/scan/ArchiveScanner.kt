@@ -11,6 +11,7 @@ import dev.lumo.gallery.core.data.db.toModel
 import dev.lumo.gallery.core.model.ScanProgress
 import dev.lumo.gallery.core.model.ScanStatus
 import dev.lumo.gallery.core.model.ScannedEntry
+import dev.lumo.gallery.core.util.AppLog
 import dev.lumo.gallery.core.util.MimeTypes
 import dev.lumo.gallery.core.util.NaturalSortKey
 import kotlinx.coroutines.CoroutineDispatcher
@@ -33,6 +34,7 @@ class ArchiveScanner(
             ?: return@withContext ScanOutcome.Failure("图库不存在")
         val library = entity.toModel()
 
+        AppLog.i("Archive", "开始扫描压缩包 library=$libraryId uri=${library.archiveUri} format=${library.archiveFormat}")
         progressBus.update(
             ScanProgress(libraryId, ScanProgress.Phase.WALKING, message = "正在读取压缩包…")
         )
@@ -40,6 +42,7 @@ class ArchiveScanner(
         val reader = try {
             sessions.reader(library)
         } catch (e: ArchivePasswordRequiredException) {
+            AppLog.w("Archive", "需要密码 library=$libraryId")
             fail(libraryId, ScanStatus.PASSWORD_REQUIRED, "需要输入密码后继续")
             return@withContext ScanOutcome.Failure("需要密码")
         } catch (e: WrongArchivePasswordException) {
@@ -47,6 +50,7 @@ class ArchiveScanner(
             fail(libraryId, ScanStatus.PASSWORD_REQUIRED, "密码不正确，请重新输入")
             return@withContext ScanOutcome.Failure("密码不正确")
         } catch (e: ArchiveOpenException) {
+            AppLog.e("Archive", "打开失败 library=$libraryId", e)
             val status = if (e is CorruptArchiveException) ScanStatus.CORRUPT else ScanStatus.ERROR
             fail(libraryId, status, e.message ?: "压缩包读取失败")
             return@withContext ScanOutcome.Failure(e.message ?: "压缩包读取失败")
@@ -113,6 +117,7 @@ class ArchiveScanner(
             isAvailable = true
         )
 
+        AppLog.i("Archive", "扫描完成 library=$libraryId images=${result.count} entries=${allEntries.size}")
         progressBus.update(
             ScanProgress(
                 libraryId, ScanProgress.Phase.DONE,

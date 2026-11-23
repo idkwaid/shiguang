@@ -43,6 +43,7 @@ import dev.lumo.gallery.feature.tags.TagsScreen
 import dev.lumo.gallery.feature.favorites.FavoritesScreen
 import dev.lumo.gallery.feature.home.HomeScreen
 import dev.lumo.gallery.feature.library.LibraryScreen
+import dev.lumo.gallery.feature.logs.LogsScreen
 import dev.lumo.gallery.feature.private.PrivateGateScreen
 import dev.lumo.gallery.feature.search.SearchScreen
 import dev.lumo.gallery.feature.settings.SettingsScreen
@@ -205,7 +206,12 @@ fun AppRoot() {
                         }
                     )
                 }
-                composable(Routes.SETTINGS) { SettingsScreen() }
+                composable(Routes.SETTINGS) {
+                    SettingsScreen(onOpenLogs = { navController.navigate(Routes.LOGS) })
+                }
+                composable(Routes.LOGS) {
+                    LogsScreen(onBack = { navController.popBackStack() })
+                }
                 composable(Routes.SEARCH) {
                     SearchScreen(
                         onBack = { navController.popBackStack() },
@@ -227,7 +233,10 @@ fun AppRoot() {
                         onOpenViewer = { lib, item ->
                             navController.navigate(Routes.viewer(lib, item))
                         },
-                        onOpenPrivate = { navController.navigate(Routes.PRIVATE) }
+                        onOpenPrivate = { navController.navigate(Routes.PRIVATE) },
+                        onOpenEditor = { lib, item ->
+                            navController.navigate(Routes.editor(lib, item))
+                        }
                     )
                 }
                 composable(
@@ -240,8 +249,7 @@ fun AppRoot() {
                     ViewerScreen(
                         libraryId = entry.arguments?.getString("libraryId").orEmpty(),
                         itemId = entry.arguments?.getString("itemId").orEmpty(),
-                        onBack = { navController.popBackStack() },
-                        onEdit = { lib, item -> navController.navigate(Routes.editor(lib, item)) }
+                        onBack = { navController.popBackStack() }
                     )
                 }
             }
