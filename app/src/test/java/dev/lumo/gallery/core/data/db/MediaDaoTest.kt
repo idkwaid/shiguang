@@ -101,7 +101,7 @@ class MediaDaoTest {
         db.mediaDao().upsertAll(
             listOf(
                 mediaEntity("m1", "lib", "a/1.jpg", "1.jpg", favorite = true),
-                mediaEntity("m2", "lib", "a/2.jpg", "2.jpg")
+                mediaEntity("m2", "lib", "a/2.jpg", "2.jpg", favorite = true)
             )
         )
 
@@ -153,7 +153,7 @@ class MediaDaoTest {
         db.mediaDao().upsertAll(
             listOf(
                 mediaEntity("m10", "lib", "a/10.jpg", "10.jpg"),
-                mediaEntity("m2", "lib", "a/2.jpg", "2.jpg"),
+                mediaEntity("m2", "lib", "a/2.jpg", "2.jpg", favorite = true),
                 mediaEntity("m1", "lib", "a/1.jpg", "1.jpg")
             )
         )

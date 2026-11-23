@@ -9,6 +9,7 @@ import dev.lumo.gallery.core.data.scan.ScanOutcome
 import dev.lumo.gallery.core.model.Library
 import dev.lumo.gallery.core.model.MediaItem
 import dev.lumo.gallery.core.model.ScanProgress
+import android.net.Uri
 import dev.lumo.gallery.core.ui.viewModelFactoryOf
 import dev.lumo.gallery.di.AppContainer
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -68,6 +69,38 @@ class LibraryViewModel(
                 ScanOutcome.PermissionLost -> _messages.emit("目录授权已失效，请重新添加文件夹")
                 is ScanOutcome.Failure -> _messages.emit(outcome.message)
             }
+        }
+    }
+
+    @Volatile
+    private var lastAutoScanAt: Long = 0L
+
+    @Volatile
+    private var lastChangeAt: Long = 0L
+
+    /** 回到前台/文件夹变化时按节流时间自动增量扫描。 */
+    fun refreshIfStale(minIntervalMs: Long = 60_000L) {
+        val now = System.currentTimeMillis()
+        if (now - lastAutoScanAt < minIntervalMs) return
+        lastAutoScanAt = now
+        viewModelScope.launch { libraries.scan(libraryId, "自动刷新") }
+    }
+
+    /** ContentObserver 回调可能非常密集，合并成一次扫描。 */
+    fun onFolderChanged() {
+        val now = System.currentTimeMillis()
+        if (now - lastChangeAt < 1_500L) return
+        lastChangeAt = now
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(800)
+            libraries.scan(libraryId, "文件夹变化")
+        }
+    }
+
+    fun reauthorize(treeUri: Uri) {
+        viewModelScope.launch {
+            val ok = libraries.reauthorize(libraryId, treeUri)
+            if (!ok) _messages.emit("重新授权失败")
         }
     }
 

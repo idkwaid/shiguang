@@ -1,5 +1,11 @@
 package dev.lumo.gallery.feature.library
 
+import android.database.ContentObserver
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -35,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,11 +50,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.lumo.gallery.core.model.ScanProgress
 import dev.lumo.gallery.core.model.ScanStatus
 import dev.lumo.gallery.core.ui.LocalAppContainer
 import dev.lumo.gallery.core.ui.components.EmptyState
@@ -73,6 +86,37 @@ fun LibraryScreen(
     var confirmRemove by remember { mutableStateOf(false) }
     var passwordDialog by remember { mutableStateOf(false) }
     var passwordText by remember { mutableStateOf("") }
+
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val reauthLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri -> if (uri != null) vm.reauthorize(uri) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) vm.refreshIfStale()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    DisposableEffect(library?.treeUri) {
+        val tree = library?.treeUri?.let(Uri::parse)
+        if (tree == null) {
+            onDispose { }
+        } else {
+            val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean, uri: Uri?) {
+                    vm.onFolderChanged()
+                }
+            }
+            runCatching { context.contentResolver.registerContentObserver(tree, true, observer) }
+            onDispose {
+                runCatching { context.contentResolver.unregisterContentObserver(observer) }
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         vm.messages.collect { snackbar.showSnackbar(it) }
@@ -136,6 +180,13 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            val refreshing = scanProgress?.phase == ScanProgress.Phase.WALKING ||
+                scanProgress?.phase == ScanProgress.Phase.INDEXING
+            PullToRefreshBox(
+                isRefreshing = refreshing,
+                onRefresh = { vm.refresh() },
+                modifier = Modifier.fillMaxSize()
+            ) {
             when {
                 library == null -> Unit
                 items.isEmpty() -> EmptyState(
@@ -156,10 +207,13 @@ fun LibraryScreen(
                     description = library?.lastError
                         ?: "添加图片到该文件夹后，下拉刷新或点右上角刷新即可重新扫描。",
                     action = {
-                        if (library?.scanStatus == ScanStatus.PASSWORD_REQUIRED) {
-                            TextButton(onClick = { passwordDialog = true }) { Text("输入密码") }
-                        } else {
-                            TextButton(onClick = { vm.refresh() }) { Text("重新扫描") }
+                        when (library?.scanStatus) {
+                            ScanStatus.PASSWORD_REQUIRED ->
+                                TextButton(onClick = { passwordDialog = true }) { Text("输入密码") }
+                            ScanStatus.PERMISSION_LOST ->
+                                TextButton(onClick = { reauthLauncher.launch(null) }) { Text("重新授权") }
+                            else ->
+                                TextButton(onClick = { vm.refresh() }) { Text("重新扫描") }
                         }
                     }
                 )
@@ -223,6 +277,7 @@ fun LibraryScreen(
                         }
                     }
                 }
+            }
             }
         }
     }

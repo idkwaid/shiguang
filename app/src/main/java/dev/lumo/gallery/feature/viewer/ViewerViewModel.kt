@@ -64,6 +64,9 @@ class ViewerViewModel(
         viewModelScope.launch { media.saveProgress(libraryId, item.id, index) }
     }
 
+    suspend fun libraryOf(item: MediaItem): dev.lumo.gallery.core.model.Library? =
+        libraries.get(item.libraryId)
+
     /** 1600px 预览图（M4 会换成真正按需解码的全尺寸图）。 */
     suspend fun preview(item: MediaItem): File? = withContext(Dispatchers.IO) {
         previewCache.getOrPut(item.id) {

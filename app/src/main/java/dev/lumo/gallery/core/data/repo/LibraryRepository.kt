@@ -149,6 +149,23 @@ class LibraryRepository(
         return AddLibraryResult.Added(library)
     }
 
+    /** 权限丢失后重新授权：更新 treeUri 并重扫。 */
+    suspend fun reauthorize(libraryId: String, treeUri: Uri): Boolean {
+        permissions.takePersistable(treeUri, write = true)
+        if (!permissions.hasReadPermission(treeUri)) return false
+        val entity = db.libraryDao().getById(libraryId) ?: return false
+        db.libraryDao().upsert(
+            entity.copy(
+                treeUri = treeUri.toString(),
+                isAvailable = true,
+                scanStatus = ScanStatus.NEVER.name,
+                lastError = null
+            )
+        )
+        startScan(libraryId, "重新授权")
+        return true
+    }
+
     /** 用户在密码弹窗里输入密码后重试扫描。密码只保留在内存会话里。 */
     suspend fun provideArchivePassword(libraryId: String, password: String): Boolean {
         val trimmed = password

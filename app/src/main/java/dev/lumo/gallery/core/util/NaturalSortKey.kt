@@ -32,12 +32,11 @@ object NaturalSortKey {
                 while (sig < end && name[sig] == '0') sig++
                 val significant = end - sig
                 if (significant > NUMBER_WIDTH) {
-                    // 超大数字：保留原始数字串，前缀长度保证同类可比
-                    sb.append('~')
+                    // 超过 12 位的大数字：前缀 ':' 保证排在普通数字之后、字母之前
+                    sb.append(':')
                     sb.append(significant.toString().padStart(4, '0'))
                     sb.append(name, sig, end)
                 } else {
-                    sb.append('~')
                     repeat(NUMBER_WIDTH - significant) { sb.append('0') }
                     if (significant > 0) sb.append(name, sig, end)
                     sb.append(':')

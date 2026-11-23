@@ -7,7 +7,7 @@ import org.junit.Test
 class NaturalOrderTest {
 
     private fun assertOrdered(vararg names: String) {
-        val sorted = names.shuffled(java.util.Random(42)).sortedWith(NaturalOrder)
+        val sorted = names.toList().shuffled(kotlin.random.Random(42)).sortedWith(NaturalOrder)
         assertEquals(names.toList(), sorted)
     }
 

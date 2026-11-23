@@ -7,7 +7,6 @@ class LikeEscapeTest {
 
     @Test
     fun escapes_wildcards_and_backslash() {
-        assertEquals("100%", "100\\%".replace("\\%", "%"))
         assertEquals("100\\%", MediaRepository.escapeLike("100%"))
         assertEquals("a\\_b", MediaRepository.escapeLike("a_b"))
         assertEquals("a\\\\b", MediaRepository.escapeLike("a\\b"))

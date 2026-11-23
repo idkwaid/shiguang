@@ -2,6 +2,7 @@ package dev.lumo.gallery
 
 import android.app.Application
 import coil3.SingletonImageLoader
+import dev.lumo.gallery.core.data.scan.LibraryScanWorker
 import dev.lumo.gallery.di.AppContainer
 
 /**
@@ -17,6 +18,7 @@ class LumoApp : Application() {
         instance = this
         container = AppContainer(this)
         SingletonImageLoader.setUnsafe(container.imageLoader)
+        LibraryScanWorker.schedule(this)
     }
 
     companion object {

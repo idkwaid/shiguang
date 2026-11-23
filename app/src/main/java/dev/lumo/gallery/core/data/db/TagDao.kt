@@ -52,6 +52,9 @@ interface TagDao {
     @Query("SELECT tagId AS tagId, COUNT(*) AS count FROM media_tags GROUP BY tagId")
     suspend fun counts(): List<TagCount>
 
+    @Query("SELECT tagId AS tagId, COUNT(*) AS count FROM media_tags GROUP BY tagId")
+    fun observeCounts(): Flow<List<TagCount>>
+
     @Upsert
     suspend fun upsert(tag: TagEntity)
 }

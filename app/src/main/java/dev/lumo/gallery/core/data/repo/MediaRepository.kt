@@ -72,6 +72,8 @@ class MediaRepository(private val db: LumoDatabase) {
 
     suspend fun tagCounts(): List<TagCount> = tagDao.counts()
 
+    fun observeTagCounts(): Flow<List<TagCount>> = tagDao.observeCounts()
+
     suspend fun createTag(name: String, colorArgb: Int): Long {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return -1L

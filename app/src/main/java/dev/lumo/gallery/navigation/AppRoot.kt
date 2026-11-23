@@ -34,6 +34,10 @@ import androidx.navigation.navArgument
 import dev.lumo.gallery.LumoApp
 import dev.lumo.gallery.core.ui.LocalAppContainer
 import dev.lumo.gallery.feature.explore.ExploreScreen
+import dev.lumo.gallery.feature.memory.MemoryScreen
+import dev.lumo.gallery.feature.memory.RandomScreen
+import dev.lumo.gallery.feature.tags.TagDetailScreen
+import dev.lumo.gallery.feature.tags.TagsScreen
 import dev.lumo.gallery.feature.favorites.FavoritesScreen
 import dev.lumo.gallery.feature.home.HomeScreen
 import dev.lumo.gallery.feature.library.LibraryScreen
@@ -126,7 +130,53 @@ fun AppRoot() {
                         }
                     )
                 }
-                composable(Routes.EXPLORE) { ExploreScreen() }
+                composable(Routes.EXPLORE) {
+                    ExploreScreen(
+                        onOpenTags = { navController.navigate(Routes.TAGS) },
+                        onOpenMemory = { navController.navigate(Routes.MEMORY) },
+                        onOpenRandom = { navController.navigate(Routes.RANDOM) }
+                    )
+                }
+                composable(Routes.TAGS) {
+                    TagsScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenTag = { id, name -> navController.navigate(Routes.tagDetail(id, name)) }
+                    )
+                }
+                composable(
+                    route = Routes.TAG_DETAIL,
+                    arguments = listOf(
+                        navArgument("tagId") { type = NavType.LongType },
+                        navArgument("tagName") { type = NavType.StringType }
+                    )
+                ) { entry ->
+                    val tagId = entry.arguments?.getLong("tagId") ?: 0L
+                    val tagName = android.net.Uri.decode(entry.arguments?.getString("tagName").orEmpty())
+                    TagDetailScreen(
+                        tagId = tagId,
+                        tagName = tagName,
+                        onBack = { navController.popBackStack() },
+                        onOpenViewer = { libraryId, itemId ->
+                            navController.navigate(Routes.viewer(libraryId, itemId))
+                        }
+                    )
+                }
+                composable(Routes.MEMORY) {
+                    MemoryScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenViewer = { libraryId, itemId ->
+                            navController.navigate(Routes.viewer(libraryId, itemId))
+                        }
+                    )
+                }
+                composable(Routes.RANDOM) {
+                    RandomScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenViewer = { libraryId, itemId ->
+                            navController.navigate(Routes.viewer(libraryId, itemId))
+                        }
+                    )
+                }
                 composable(Routes.SETTINGS) { SettingsScreen() }
                 composable(Routes.SEARCH) {
                     SearchScreen(
