@@ -108,6 +108,9 @@ class MediaRepository(
 
     suspend fun tagCounts(): List<TagCount> = tagDao.counts()
 
+    fun observeTagSearch(query: String): Flow<List<Tag>> =
+        tagDao.search(escapeLike(query)).map { list -> list.map(TagEntity::toModel) }
+
     fun observeTagCounts(): Flow<List<TagCount>> = tagDao.observeCounts()
 
     suspend fun createTag(name: String, colorArgb: Int): Long {

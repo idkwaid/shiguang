@@ -9,7 +9,7 @@
 | 1.1 | 多源导入：文件夹、ZIP/RAR/7Z 压缩包 | SAF `OpenDocumentTree` / `OpenDocument`；`MediaSource` 抽象统一遍历与读流 | `core/data/source/`、`core/archive/` | ✅ |
 | 1.2 | 独立图库归类；压缩包内子目录平铺 | 每个 folder/archive 一个 `libraries` 行；压缩包条目 `locator` 保留相对路径但只显示文件名 | `LibraryRepository.addFolder/addArchive`、`ArchiveScanner` | ✅ |
 | 1.3 | 严格自然排序 | `NaturalOrder` 比较器 + 入库 `sortKey`（数字补零），SQL 直接按自然序排序 | `core/util/NaturalOrder.kt`、`NaturalSortKey.kt` | ✅ |
-| 1.4 | 全局搜索（图库名 + 文件名） | 图库名 LIKE + 图片名 LIKE（转义通配符），200ms 防抖；标签名搜索暂未聚合 | `LibraryDao.search`、`MediaDao.search`、`SearchViewModel` | 🟡 |
+| 1.4 | 全局搜索（图库名 + 文件名 + 标签名） | 图库名 / 图片名 / 标签名三路 LIKE（转义通配符），200ms 防抖，结果分区展示 | `LibraryDao.search`、`MediaDao.search`、`TagDao.search`、`SearchViewModel` | ✅ |
 | 1.5 | 下拉刷新 + 自动监听增删 | 下拉刷新 + ContentObserver + 回前台节流扫描 + WorkManager 6h 周期扫描 | `LibraryScreen`、`LibraryViewModel`、`LibraryScanWorker` | ✅ |
 | 1.6 | 空文件夹 / 损坏包 / 加密包提示 | `ScanStatus` 分支 + 密码弹窗 + 重新授权按钮 | `LibraryScreen`、`FolderScanner`、`ArchiveScanner` | ✅ |
 
@@ -55,7 +55,7 @@
 |---|---|---|---|---|
 | 6.1 | 极简风格 + 毛玻璃底栏 | 极简浅色/深色主题 ✅；底部栏目前为实色，Haze 毛玻璃未启用 | `core/ui/theme/`、`navigation/AppRoot.kt` | 🟡 |
 | 6.2 | 动态主题取色 | 取当前图片主色，用于页码胶囊与幻灯片控件（Palette） | `PaletteExtractor`、`ViewerScreen` | ✅ |
-| 6.3 | 流畅动画：进入全屏、飘心、进度条 | 全屏淡入、图片解码占位、扫描进度条、收藏心形弹性动画；粒子“飘心”与共享元素过渡未做 | `ViewerScreen` | 🟡 |
+| 6.3 | 流畅动画：进入全屏、飘心、进度条 | 全屏淡入、图片解码占位、扫描进度条、收藏按钮弹性动画 + 收藏时飘心上浮；共享元素过渡仍用淡入替代 | `ViewerScreen` | ✅ |
 | 6.4 | 加载占位 / 渐显 | 缩略图占位、解码占位、渐进加载；Coil 自带渐显 | `PhotoTile`、`ZoomablePhoto` | ✅ |
 
 ## 测试覆盖

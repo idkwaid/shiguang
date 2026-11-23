@@ -24,6 +24,9 @@ interface TagDao {
     @Query("SELECT * FROM tags WHERE name = :name LIMIT 1")
     suspend fun findByName(name: String): TagEntity?
 
+    @Query("SELECT * FROM tags WHERE name LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY name")
+    fun search(query: String): Flow<List<TagEntity>>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(tag: TagEntity): Long
 

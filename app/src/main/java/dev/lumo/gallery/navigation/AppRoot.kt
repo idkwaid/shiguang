@@ -212,7 +212,8 @@ fun AppRoot() {
                         onOpenLibrary = { id -> navController.navigate(Routes.library(id)) },
                         onOpenViewer = { libraryId, itemId ->
                             navController.navigate(Routes.viewer(libraryId, itemId))
-                        }
+                        },
+                        onOpenTag = { id, name -> navController.navigate(Routes.tagDetail(id, name)) }
                     )
                 }
                 composable(

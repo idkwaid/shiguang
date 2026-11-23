@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -62,7 +63,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -181,6 +184,7 @@ fun ViewerScreen(
         var comparing by remember { mutableStateOf(false) }
         var accent by remember { mutableStateOf<Color?>(null) }
         var slideshowRandom by remember { mutableStateOf(false) }
+        var heartBurst by remember { androidx.compose.runtime.mutableIntStateOf(0) }
         val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(
             initialValue = AppSettings()
         )
@@ -275,7 +279,13 @@ fun ViewerScreen(
                     animationSpec = spring(dampingRatio = 0.45f, stiffness = 520f),
                     label = "heart"
                 )
-                IconButton(onClick = { current?.let(vm::toggleFavorite) }) {
+                IconButton(onClick = {
+                    current?.let { item ->
+                        val becomingFavorite = !favoriteIds.contains(item.id)
+                        vm.toggleFavorite(item)
+                        if (becomingFavorite) heartBurst++
+                    }
+                }) {
                     Icon(
                         imageVector = if (favorite) Icons.Outlined.Favorite else Icons.Outlined.FavoriteBorder,
                         contentDescription = if (favorite) "取消收藏" else "收藏",
@@ -421,6 +431,28 @@ fun ViewerScreen(
                     }
                 )
         )
+
+        if (heartBurst > 0) {
+            val burst = remember(heartBurst) { Animatable(0f) }
+            LaunchedEffect(heartBurst) {
+                burst.snapTo(0f)
+                burst.animateTo(1f, animationSpec = tween(700))
+            }
+            Icon(
+                imageVector = Icons.Outlined.Favorite,
+                contentDescription = null,
+                tint = Color(0xFFE45C7B),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .offset(y = (-150 - 80 * burst.value).dp)
+                    .size(64.dp)
+                    .graphicsLayer {
+                        alpha = (1f - burst.value).coerceIn(0f, 1f)
+                        scaleX = 0.8f + burst.value * 0.7f
+                        scaleY = 0.8f + burst.value * 0.7f
+                    }
+            )
+        }
 
         if (comparing) {
             Surface(

@@ -48,7 +48,8 @@ import dev.lumo.gallery.core.ui.components.PhotoTile
 fun SearchScreen(
     onBack: () -> Unit,
     onOpenLibrary: (String) -> Unit,
-    onOpenViewer: (libraryId: String, itemId: String) -> Unit
+    onOpenViewer: (libraryId: String, itemId: String) -> Unit,
+    onOpenTag: (Long, String) -> Unit = { _, _ -> }
 ) {
     val container = LocalAppContainer.current
     val vm: SearchViewModel = viewModel(factory = SearchViewModel.factory(container))
@@ -146,6 +147,29 @@ fun SearchScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    if (results.tags.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Text(
+                                text = "标签",
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)
+                            )
+                        }
+                        itemsIndexed(results.tags, key = { _, tag -> "tag-${tag.id}" }) { _, tag ->
+                            androidx.compose.material3.Surface(
+                                onClick = { onOpenTag(tag.id, tag.name) },
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                                color = MaterialTheme.colorScheme.surfaceVariant
+                            ) {
+                                Text(
+                                    text = "# ${tag.name}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                                 )
                             }
                         }

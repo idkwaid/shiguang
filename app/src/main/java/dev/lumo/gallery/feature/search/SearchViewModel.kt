@@ -40,8 +40,11 @@ class SearchViewModel(
             } else {
                 combine(
                     libraries.observeSearch(q),
-                    media.observeSearch(q)
-                ) { libs, items -> SearchResults(libraries = libs, items = items) }
+                    media.observeSearch(q),
+                    media.observeTagSearch(q)
+                ) { libs, items, tags ->
+                    SearchResults(libraries = libs, items = items, tags = tags)
+                }
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SearchResults())
