@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">拾光</string>
+    <string name="home_title">拾光</string>
+    <string name="tab_home">图库</string>
+    <string name="tab_favorites">收藏</string>
+    <string name="tab_explore">探索</string>
+    <string name="tab_settings">设置</string>
+</resources>

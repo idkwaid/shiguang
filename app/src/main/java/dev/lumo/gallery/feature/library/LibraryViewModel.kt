@@ -1,0 +1,108 @@
+package dev.lumo.gallery.feature.library
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import dev.lumo.gallery.core.data.repo.LibraryRepository
+import dev.lumo.gallery.core.data.repo.MediaRepository
+import dev.lumo.gallery.core.data.scan.ScanOutcome
+import dev.lumo.gallery.core.model.Library
+import dev.lumo.gallery.core.model.MediaItem
+import dev.lumo.gallery.core.model.ScanProgress
+import dev.lumo.gallery.core.ui.viewModelFactoryOf
+import dev.lumo.gallery.di.AppContainer
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+
+data class ContinueInfo(
+    val index: Int,
+    val total: Int
+)
+
+class LibraryViewModel(
+    private val libraryId: String,
+    private val libraries: LibraryRepository,
+    private val media: MediaRepository
+) : ViewModel() {
+
+    val library: StateFlow<Library?> = libraries.observeById(libraryId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val items: StateFlow<List<MediaItem>> = media.observeLibraryItems(libraryId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val scanProgress: StateFlow<ScanProgress?> = libraries.scanProgress(libraryId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val continueInfo: StateFlow<ContinueInfo?> = combine(
+        items,
+        media.observeProgress(libraryId)
+    ) { list, progress ->
+        if (progress == null || list.isEmpty()) return@combine null
+        val index = list.indexOfFirst { it.id == progress.mediaId }
+        if (index <= 0) null else ContinueInfo(index = index, total = list.size)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val messages = _messages.asSharedFlow()
+
+    init {
+        viewModelScope.launch {
+            val current = libraries.get(libraryId)
+            if (current != null && current.lastScanAt == 0L) {
+                libraries.scan(libraryId, "首次打开")
+            }
+        }
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            when (val outcome = libraries.scan(libraryId, "下拉刷新")) {
+                is ScanOutcome.Success -> _messages.emit("扫描完成：${outcome.itemCount} 张")
+                ScanOutcome.Empty -> _messages.emit("这个文件夹里还没有图片")
+                ScanOutcome.PermissionLost -> _messages.emit("目录授权已失效，请重新添加文件夹")
+                is ScanOutcome.Failure -> _messages.emit(outcome.message)
+            }
+        }
+    }
+
+    fun submitPassword(password: String) {
+        viewModelScope.launch {
+            val ok = libraries.provideArchivePassword(libraryId, password)
+            if (!ok) _messages.emit("密码不对，或压缩包读取失败")
+        }
+    }
+
+    fun saveProgress(itemId: String, index: Int) {
+        viewModelScope.launch { media.saveProgress(libraryId, itemId, index) }
+    }
+
+    fun clearProgress() {
+        viewModelScope.launch { media.clearProgress(libraryId) }
+    }
+
+    fun removeLibrary(onDone: () -> Unit) {
+        viewModelScope.launch {
+            libraries.delete(libraryId)
+            onDone()
+        }
+    }
+
+    companion object {
+        fun factory(
+            container: AppContainer,
+            libraryId: String
+        ): ViewModelProvider.Factory = viewModelFactoryOf {
+            LibraryViewModel(
+                libraryId = libraryId,
+                libraries = container.libraryRepository,
+                media = container.mediaRepository
+            )
+        }
+    }
+}

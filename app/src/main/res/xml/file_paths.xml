@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <cache-path name="share" path="share/" />
+    <cache-path name="archive_stage" path="archive-stage/" />
+    <cache-path name="editor" path="editor/" />
+    <files-path name="files_export" path="export/" />
+</paths>

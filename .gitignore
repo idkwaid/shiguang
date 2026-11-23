@@ -1,0 +1,12 @@
+.gradle/
+.gradle-home/
+build/
+local.properties
+.toolchain/
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+app/build/
+app/schemas/.*
