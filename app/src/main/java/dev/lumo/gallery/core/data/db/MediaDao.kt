@@ -46,6 +46,18 @@ interface MediaDao {
     @Query("UPDATE media_items SET thumbReady = :ready WHERE id = :id")
     suspend fun setThumbReady(id: String, ready: Boolean)
 
+    @Query("SELECT * FROM media_items WHERE libraryId = :libraryId AND isPresent = 1 AND thumbReady = 1")
+    suspend fun thumbReadyItems(libraryId: String): List<MediaItemEntity>
+
+    @Query("SELECT * FROM media_items WHERE isPresent = 1 AND thumbReady = 1")
+    suspend fun allThumbReadyItems(): List<MediaItemEntity>
+
+    @Query("UPDATE media_items SET thumbReady = 0 WHERE libraryId = :libraryId")
+    suspend fun resetThumbReady(libraryId: String)
+
+    @Query("UPDATE media_items SET thumbReady = 0")
+    suspend fun resetAllThumbReady()
+
     @Query(
         "UPDATE media_items SET width = :width, height = :height, orientation = :orientation, " +
             "dateTaken = :dateTaken, dateSource = :dateSource, mime = :mime, thumbReady = :thumbReady " +

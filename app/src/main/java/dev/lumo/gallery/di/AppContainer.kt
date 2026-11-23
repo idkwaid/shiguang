@@ -75,6 +75,7 @@ class AppContainer(context: Context) {
         context = appContext,
         db = database,
         permissions = permissions,
+        walker = walker,
         scanner = scanCoordinator,
         progressBus = progressBus,
         thumbCache = thumbCache,

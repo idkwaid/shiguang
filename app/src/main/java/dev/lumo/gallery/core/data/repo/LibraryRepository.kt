@@ -12,6 +12,7 @@ import dev.lumo.gallery.core.data.db.toModel
 import dev.lumo.gallery.core.data.scan.LibraryScanner
 import dev.lumo.gallery.core.data.scan.ScanOutcome
 import dev.lumo.gallery.core.data.scan.ScanProgressBus
+import dev.lumo.gallery.core.data.source.FolderWalker
 import dev.lumo.gallery.core.data.source.SafPermissions
 import dev.lumo.gallery.core.archive.ArchiveEntryCache
 import dev.lumo.gallery.core.archive.ArchiveSessionStore
@@ -27,10 +28,22 @@ import dev.lumo.gallery.core.model.SortMode
 import dev.lumo.gallery.core.util.MimeTypes
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.util.UUID
+
+sealed interface GroupedImportResult {
+    data class Created(
+        val libraries: List<Library>,
+        val folderLibraries: Int,
+        val archiveLibraries: Int
+    ) : GroupedImportResult
+
+    data object Empty : GroupedImportResult
+    data class Failed(val message: String) : GroupedImportResult
+}
 
 sealed interface AddLibraryResult {
     data class Added(val library: Library) : AddLibraryResult
@@ -42,6 +55,7 @@ class LibraryRepository(
     private val context: Context,
     private val db: LumoDatabase,
     private val permissions: SafPermissions,
+    private val walker: FolderWalker,
     private val scanner: LibraryScanner,
     private val progressBus: ScanProgressBus,
     private val thumbCache: ThumbCache,
@@ -72,6 +86,130 @@ class LibraryRepository(
     fun scanProgress(libraryId: String): Flow<ScanProgress?> = progressBus.progressOf(libraryId)
 
     fun allScanProgress(): Flow<Map<String, ScanProgress>> = progressBus.states
+
+    /**
+     * 分组导入：选中目录下“每个直接含图片的子目录”和“每个压缩包”各建一个图库。
+     * 只建中继目录没有意义，因此跳过不含直接图片的目录。
+     */
+    suspend fun addFolderGrouped(
+        treeUri: Uri,
+        onProgress: (String) -> Unit = {}
+    ): GroupedImportResult = withContext(Dispatchers.IO) {
+        if (!permissions.hasReadPermission(treeUri)) {
+            permissions.takePersistable(treeUri, write = true)
+        }
+        if (!permissions.hasReadPermission(treeUri)) {
+            return@withContext GroupedImportResult.Failed("无法获得该文件夹的读取权限")
+        }
+        val rootName = queryTreeDisplayName(treeUri) ?: "文件夹"
+        onProgress("正在分析目录结构…")
+        val summary = try {
+            walker.summarize(treeUri) { dirs -> onProgress("已扫描 $dirs 个目录…") }
+        } catch (e: Exception) {
+            return@withContext GroupedImportResult.Failed("目录读取失败：${e.message}")
+        }
+
+        val created = ArrayList<Library>()
+        var folderCount = 0
+        var archiveCount = 0
+        var stamp = System.currentTimeMillis()
+        val treeKey = treeUri.toString()
+
+        if (summary.rootHasDirectImages && db.libraryDao().findFolderRootByUri(treeKey) == null) {
+            created.add(
+                newFolderLibrary(
+                    treeUri = treeKey,
+                    relPath = null,
+                    name = rootName,
+                    createdAt = stamp++
+                )
+            )
+            folderCount++
+        }
+
+        for (relPath in summary.dirsWithDirectImages) {
+            if (db.libraryDao().findFolderByRelPath(treeKey, relPath) == null) {
+                created.add(
+                    newFolderLibrary(
+                        treeUri = treeKey,
+                        relPath = relPath,
+                        name = relPath,
+                        createdAt = stamp++
+                    )
+                )
+                folderCount++
+            }
+        }
+
+        for (child in summary.archives) {
+            val format = child.archiveFormat
+                ?.let { runCatching { ArchiveFormat.valueOf(it) }.getOrNull() }
+                ?: continue
+            val archiveUri = child.docUri.toString()
+            if (db.libraryDao().findArchiveByUri(archiveUri) != null) continue
+            created.add(
+                Library(
+                    id = UUID.randomUUID().toString(),
+                    type = LibraryType.ARCHIVE,
+                    name = child.name,
+                    treeUri = treeKey,
+                    treeRootRelPath = null,
+                    archiveUri = archiveUri,
+                    archiveFormat = format,
+                    displayPath = child.relPath,
+                    isPrivate = false,
+                    isAvailable = true,
+                    sortMode = SortMode.NATURAL,
+                    createdAt = stamp++,
+                    lastScanAt = 0L,
+                    coverItemId = null,
+                    itemCount = 0,
+                    scanStatus = ScanStatus.NEVER,
+                    lastError = null
+                )
+            )
+            archiveCount++
+        }
+
+        created.forEach { db.libraryDao().upsert(it.toEntity()) }
+        if (created.isEmpty()) {
+            GroupedImportResult.Empty
+        } else {
+            GroupedImportResult.Created(created, folderCount, archiveCount)
+        }
+    }
+
+    private fun newFolderLibrary(
+        treeUri: String,
+        relPath: String?,
+        name: String,
+        createdAt: Long
+    ): Library = Library(
+        id = UUID.randomUUID().toString(),
+        type = LibraryType.FOLDER,
+        name = name,
+        treeUri = treeUri,
+        treeRootRelPath = relPath,
+        archiveUri = null,
+        archiveFormat = null,
+        displayPath = relPath ?: name,
+        isPrivate = false,
+        isAvailable = true,
+        sortMode = SortMode.NATURAL,
+        createdAt = createdAt,
+        lastScanAt = 0L,
+        coverItemId = null,
+        itemCount = 0,
+        scanStatus = ScanStatus.NEVER,
+        lastError = null
+    )
+
+    /** 分组导入后按顺序后台扫描，避免同时压满 IO。 */
+    fun startBatchScan(libraryIds: List<String>, reason: String = "首次导入") {
+        appScope.launch(Dispatchers.IO) {
+            libraryIds.forEach { scan(it, reason) }
+        }
+    }
 
     /**
      * 添加文件夹图库：申请持久化授权 → 去重 → 建库 → 首次扫描。
@@ -206,6 +344,44 @@ class LibraryRepository(
         return outcome
     }
 
+    /**
+     * 修复“库里标记 thumbReady 但缩略图文件已丢失/从未生成”的条目并重新富化。
+     * 升级旧版本、清缓存、或上次解码失败后都会用到。
+     */
+    suspend fun ensureThumbnails(libraryId: String) {
+        val ready = db.mediaDao().thumbReadyItems(libraryId)
+        var reset = 0
+        for (entity in ready) {
+            if (thumbCache.existing(libraryId, entity.id, entity.lastModified) == null) {
+                db.mediaDao().setThumbReady(entity.id, false)
+                reset++
+            }
+        }
+        if (reset > 0 || db.mediaDao().itemsNeedingThumbnailsInLibrary(libraryId, 1).isNotEmpty()) {
+            enricher.enqueue(libraryId)
+        }
+    }
+
+    /** 首页启动时修复所有图库缺失的缩略图（一次进程生命周期内调用一次）。 */
+    fun ensureAllThumbnails() {
+        appScope.launch(Dispatchers.IO) {
+            runCatching { db.libraryDao().getAllOnce() }.getOrDefault(emptyList())
+                .forEach { entity -> runCatching { ensureThumbnails(entity.id) } }
+        }
+    }
+
+    /** 清空缩略图缓存后重建：重置标记并重新富化。 */
+    suspend fun regenerateThumbnails(libraryId: String) {
+        db.mediaDao().resetThumbReady(libraryId)
+        enricher.enqueue(libraryId)
+    }
+
+    suspend fun regenerateAllThumbnails() {
+        db.mediaDao().resetAllThumbReady()
+        runCatching { db.libraryDao().getAllOnce() }.getOrDefault(emptyList())
+            .forEach { enricher.enqueue(it.id) }
+    }
+
     /** 后台启动一次扫描，不阻塞调用方。 */
     fun startScan(libraryId: String, reason: String = "手动刷新") {
         appScope.launch(Dispatchers.IO) { scan(libraryId, reason) }
@@ -226,7 +402,8 @@ class LibraryRepository(
     fun refreshAll(reason: String = "自动刷新") {
         appScope.launch(Dispatchers.IO) {
             val all = runCatching { db.libraryDao().getAllOnce() }.getOrDefault(emptyList())
-            all.filter { it.isAvailable }.forEach { entity ->
+            val now = System.currentTimeMillis()
+            all.filter { it.isAvailable && now - it.lastScanAt > 10 * 60_000L }.forEach { entity ->
                 scan(entity.id, reason)
             }
         }

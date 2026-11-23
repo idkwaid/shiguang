@@ -42,7 +42,9 @@ class Thumbnailer(
         kind: String = "thumbs"
     ): ThumbnailResult? = withContext(io) {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        provider.open(library, item)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: return@withContext null
+        // 注意：inJustDecodeBounds 时 decodeStream 必然返回 null，不能拿返回值判断成败。
+        val boundsStream = provider.open(library, item) ?: return@withContext null
+        boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
         val rawWidth = bounds.outWidth
         val rawHeight = bounds.outHeight
         if (rawWidth <= 0 || rawHeight <= 0) return@withContext null

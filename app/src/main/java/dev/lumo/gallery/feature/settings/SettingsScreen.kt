@@ -106,7 +106,10 @@ fun SettingsScreen() {
                 trailingContent = {
                     TextButton(onClick = {
                         scope.launch {
-                            withContext(Dispatchers.IO) { container.thumbCache.clearAll() }
+                            withContext(Dispatchers.IO) {
+                                container.thumbCache.clearAll()
+                                container.libraryRepository.regenerateAllThumbnails()
+                            }
                             cacheBytes = withContext(Dispatchers.IO) { container.thumbCache.totalBytes() }
                         }
                     }) { Text("清空") }

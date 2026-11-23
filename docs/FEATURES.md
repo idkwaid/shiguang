@@ -6,8 +6,8 @@
 
 | # | 功能 | 实现 | 代码位置 | 状态 |
 |---|---|---|---|---|
-| 1.1 | 多源导入：文件夹、ZIP/RAR/7Z 压缩包 | SAF `OpenDocumentTree` / `OpenDocument`；`MediaSource` 抽象统一遍历与读流 | `core/data/source/`、`core/archive/` | ✅ |
-| 1.2 | 独立图库归类；压缩包内子目录平铺 | 每个 folder/archive 一个 `libraries` 行；压缩包条目 `locator` 保留相对路径但只显示文件名 | `LibraryRepository.addFolder/addArchive`、`ArchiveScanner` | ✅ |
+| 1.1 | 多源导入：文件夹、文件夹内压缩包、ZIP/RAR/7Z 压缩包 | SAF `OpenDocumentTree` / `OpenDocument`；分组导入会识别选中目录里的 `.zip/.rar/.7z` 并各建虚拟图库；`MediaSource` 抽象统一遍历与读流 | `core/data/source/`、`core/archive/`、`LibraryRepository.addFolderGrouped` | ✅ |
+| 1.2 | 独立图库归类；按嵌套结构细分；压缩包内子目录平铺 | 每个 folder/archive 一个 `libraries` 行；分组导入按“直接含图片的目录”拆库（`treeRootRelPath`）；压缩包条目平铺 | `LibraryRepository.addFolderGrouped`、`ArchiveScanner`、DB v2 迁移 | ✅ |
 | 1.3 | 严格自然排序 | `NaturalOrder` 比较器 + 入库 `sortKey`（数字补零），SQL 直接按自然序排序 | `core/util/NaturalOrder.kt`、`NaturalSortKey.kt` | ✅ |
 | 1.4 | 全局搜索（图库名 + 文件名 + 标签名） | 图库名 / 图片名 / 标签名三路 LIKE（转义通配符），200ms 防抖，结果分区展示 | `LibraryDao.search`、`MediaDao.search`、`TagDao.search`、`SearchViewModel` | ✅ |
 | 1.5 | 下拉刷新 + 自动监听增删 | 下拉刷新 + ContentObserver + 回前台节流扫描 + WorkManager 6h 周期扫描 | `LibraryScreen`、`LibraryViewModel`、`LibraryScanWorker` | ✅ |
@@ -63,6 +63,7 @@
 - `NaturalOrderTest`：数字/多段数字/前导零/中文/大小写/前缀/空值与 null，以及 **排序键与比较器一致性**。
 - `MediaDaoTest`（Robolectric）：私密图库过滤、软删除保留收藏、失效收藏清理、中文/通配符搜索、自然排序落库。
 - `PHashTest`（Robolectric）：相同图距离 0、不同图距离大、hex 往返、对称性。
+- `ThumbnailerTest`：有效 JPEG 能生成缩略图（回归 `inJustDecodeBounds` 返回值误判）。
 - `ExifDatesTest`、`MediaIdsTest`、`LikeEscapeTest`、`AppSmokeTest`。
 
 > 说明：无真机/模拟器，功能验收依赖测试 + APK 真机走查（见 QA-checklist）。生物识别、防截屏、真实手势、SAF 供应商差异必须真机确认。

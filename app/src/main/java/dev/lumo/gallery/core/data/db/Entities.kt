@@ -12,6 +12,8 @@ data class LibraryEntity(
     val type: String,
     val name: String,
     val treeUri: String?,
+    /** 文件夹图库：相对 treeUri 根的子目录路径；null 表示 treeUri 本身就是图库根 */
+    val treeRootRelPath: String? = null,
     val archiveUri: String?,
     val archiveFormat: String?,
     val displayPath: String,

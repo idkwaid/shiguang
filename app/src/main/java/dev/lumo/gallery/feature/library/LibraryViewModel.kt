@@ -54,6 +54,7 @@ class LibraryViewModel(
 
     init {
         viewModelScope.launch {
+            libraries.ensureThumbnails(libraryId)
             val current = libraries.get(libraryId)
             if (current != null && current.lastScanAt == 0L) {
                 libraries.scan(libraryId, "首次打开")
@@ -121,6 +122,13 @@ class LibraryViewModel(
 
     fun setNote(item: MediaItem, note: String) {
         viewModelScope.launch { media.setNote(item.id, note) }
+    }
+
+    fun regenerateThumbnails() {
+        viewModelScope.launch {
+            libraries.regenerateThumbnails(libraryId)
+            _messages.emit("正在重新生成缩略图…")
+        }
     }
 
     fun submitPassword(password: String) {

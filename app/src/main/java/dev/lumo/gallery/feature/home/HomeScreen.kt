@@ -1,5 +1,6 @@
 package dev.lumo.gallery.feature.home
 
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -69,6 +70,8 @@ fun HomeScreen(
     val busy by vm.busy.collectAsStateWithLifecycle()
     val privateLibraries by vm.privateLibraries.collectAsStateWithLifecycle()
     val tags by vm.tags.collectAsStateWithLifecycle()
+    val importStatus by vm.importStatus.collectAsStateWithLifecycle()
+    var folderChoice by remember { mutableStateOf<Uri?>(null) }
 
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -79,7 +82,7 @@ fun HomeScreen(
 
     val folderLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
-    ) { uri -> if (uri != null) vm.onFolderPicked(uri) }
+    ) { uri -> if (uri != null) folderChoice = uri }
 
     val archiveLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -118,12 +121,32 @@ fun HomeScreen(
             )
         }
     ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            if (importStatus != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text(
+                        text = importStatus!!,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
         if (libraries.isEmpty()) {
             EmptyState(
                 icon = Icons.Outlined.FolderOpen,
                 title = "还没有图库",
                 description = "把手机里的相册文件夹加进来。图片只在本机读取，不会上传。",
-                modifier = Modifier.padding(padding),
+                modifier = Modifier.weight(1f),
                 action = {
                     TextButton(onClick = { folderLauncher.launch(null) }) {
                         Text("选择文件夹")
@@ -157,8 +180,7 @@ fun HomeScreen(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
-                    .padding(padding),
+                    .weight(1f),
                 contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 96.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -175,6 +197,32 @@ fun HomeScreen(
             }
             }
         }
+        }
+    }
+
+    folderChoice?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { folderChoice = null },
+            title = { Text("导入方式") },
+            text = {
+                Text(
+                    "分组导入：每个含图片的子文件夹、以及文件夹里的每个压缩包，各建一个图库。\n" +
+                        "整体导入：整个文件夹作为一个图库，子目录图片平铺在一起。"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    folderChoice = null
+                    vm.onFolderPickedGrouped(uri)
+                }) { Text("分组导入") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    folderChoice = null
+                    vm.onFolderPicked(uri)
+                }) { Text("整体导入") }
+            }
+        )
     }
 
     actionTarget?.let { library ->

@@ -9,6 +9,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -24,6 +26,9 @@ class ImageEnricher(
 ) {
 
     private val jobs = ConcurrentHashMap<String, Job>()
+
+    /** 批量导入几十个图库时，限制同时解码的图库数量，避免 IO/内存打满。 */
+    private val permits = Semaphore(2)
 
     fun enqueue(libraryId: String) {
         jobs[libraryId]?.cancel()
@@ -44,9 +49,9 @@ class ImageEnricher(
             if (pending.isEmpty()) return
             for (entity in pending) {
                 val item = entity.toModel()
-                val result = runCatching {
-                    thumbnailer.generate(library, item, provider)
-                }.getOrNull()
+                val result = permits.withPermit {
+                    runCatching { thumbnailer.generate(library, item, provider) }.getOrNull()
+                }
                 if (result != null) {
                     val hash = PHash.fromFile(result.file)
                     if (hash != null) db.mediaDao().setPhash(item.id, PHash.toHex(hash))

@@ -186,6 +186,13 @@ fun LibraryScreen(
                                 }
                             )
                             DropdownMenuItem(
+                                text = { Text("重新生成缩略图") },
+                                onClick = {
+                                    menuOpen = false
+                                    vm.regenerateThumbnails()
+                                }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("从图库移除") },
                                 onClick = {
                                     menuOpen = false

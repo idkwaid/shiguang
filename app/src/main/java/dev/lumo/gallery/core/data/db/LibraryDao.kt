@@ -31,6 +31,12 @@ interface LibraryDao {
     @Query("SELECT * FROM libraries WHERE type = 'ARCHIVE' AND archiveUri = :uri LIMIT 1")
     suspend fun findArchiveByUri(uri: String): LibraryEntity?
 
+    @Query("SELECT * FROM libraries WHERE type = 'FOLDER' AND treeUri = :uri AND treeRootRelPath IS NULL LIMIT 1")
+    suspend fun findFolderRootByUri(uri: String): LibraryEntity?
+
+    @Query("SELECT * FROM libraries WHERE type = 'FOLDER' AND treeUri = :uri AND treeRootRelPath = :relPath LIMIT 1")
+    suspend fun findFolderByRelPath(uri: String, relPath: String): LibraryEntity?
+
     @Query("SELECT * FROM libraries WHERE isPrivate = 1 ORDER BY createdAt DESC")
     fun observePrivate(): Flow<List<LibraryEntity>>
 

@@ -2,6 +2,7 @@ package dev.lumo.gallery.core.data.scan
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import dev.lumo.gallery.core.data.db.LumoDatabase
 import dev.lumo.gallery.core.data.source.FolderWalker
 import dev.lumo.gallery.core.data.source.PermissionLostException
@@ -52,8 +53,26 @@ class FolderScanner(
             ScanProgress(libraryId, ScanProgress.Phase.WALKING, message = "正在扫描文件夹…")
         )
 
+        val startDocId = library.treeRootRelPath?.let { rel ->
+            walker.resolveDocId(treeUri, rel)
+        }
+        if (library.treeRootRelPath != null && startDocId == null) {
+            db.libraryDao().updateScanResult(
+                libraryId, library.lastScanAt, library.itemCount, library.coverItemId,
+                ScanStatus.PERMISSION_LOST.name, "子目录已不存在或授权失效", false
+            )
+            progressBus.update(
+                ScanProgress(libraryId, ScanProgress.Phase.FAILED, message = "子目录不可用")
+            )
+            return@withContext ScanOutcome.PermissionLost
+        }
+
         val entries = try {
-            walker.walk(treeUri) { scanned ->
+            walker.walk(
+                treeUri = treeUri,
+                startDocId = startDocId ?: DocumentsContract.getTreeDocumentId(treeUri),
+                startRelPath = library.treeRootRelPath.orEmpty()
+            ) { scanned ->
                 progressBus.update(
                     ScanProgress(
                         libraryId, ScanProgress.Phase.WALKING,

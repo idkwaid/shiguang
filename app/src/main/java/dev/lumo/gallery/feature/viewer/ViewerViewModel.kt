@@ -63,6 +63,10 @@ class ViewerViewModel(
         viewModelScope.launch { media.setFavorite(item.id, nowFavorite) }
     }
 
+    fun invalidatePreview(itemId: String) {
+        synchronized(previewCache) { previewCache.remove(itemId) }
+    }
+
     fun saveProgress(index: Int) {
         val item = _items.value.getOrNull(index) ?: return
         viewModelScope.launch { media.saveProgress(libraryId, item.id, index) }
@@ -71,18 +75,19 @@ class ViewerViewModel(
     suspend fun libraryOf(item: MediaItem): dev.lumo.gallery.core.model.Library? =
         libraries.get(item.libraryId)
 
-    /** 1600px 预览图（M4 会换成真正按需解码的全尺寸图）。 */
+    /** 1600px 预览图；失败返回 null，由 UI 展示失败态并可重试。 */
     suspend fun preview(item: MediaItem): File? = withContext(Dispatchers.IO) {
-        previewCache.getOrPut(item.id) {
-            val library = libraries.get(item.libraryId) ?: return@withContext null
-            thumbnailer.generate(
-                library = library,
-                item = item,
-                provider = streamProvider,
-                maxSize = 1600,
-                kind = "previews"
-            )?.file
-        }
+        synchronized(previewCache) { previewCache[item.id] }?.let { return@withContext it }
+        val library = libraries.get(item.libraryId) ?: return@withContext null
+        val generated = thumbnailer.generate(
+            library = library,
+            item = item,
+            provider = streamProvider,
+            maxSize = 1600,
+            kind = "previews"
+        )?.file
+        synchronized(previewCache) { previewCache[item.id] = generated }
+        generated
     }
 
     companion object {

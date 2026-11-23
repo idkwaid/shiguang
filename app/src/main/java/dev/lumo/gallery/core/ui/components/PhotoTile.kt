@@ -66,6 +66,13 @@ fun PhotoTile(
                 modifier = Modifier.size(26.dp)
             )
 
+            item.thumbReady -> Icon(
+                imageVector = Icons.Outlined.BrokenImage,
+                contentDescription = "无法解码",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(26.dp)
+            )
+
             else -> Icon(
                 imageVector = Icons.Outlined.Image,
                 contentDescription = "生成缩略图中",

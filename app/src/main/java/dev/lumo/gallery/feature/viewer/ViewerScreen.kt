@@ -40,6 +40,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
@@ -103,6 +104,12 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
+
+private sealed interface PreviewState {
+    data object Loading : PreviewState
+    data class Ready(val file: File) : PreviewState
+    data object Failed : PreviewState
+}
 
 /**
  * 沉浸式全屏查看：左右翻页、捏合缩放、双击缩放、双指长按对比、
@@ -226,17 +233,70 @@ fun ViewerScreen(
             key = { page -> items[page].id }
         ) { page ->
             val item = items[page]
-            val file by produceState<File?>(initialValue = null, item.id, item.lastModified) {
-                value = vm.preview(item)
+            var reloadToken by remember(item.id) { androidx.compose.runtime.mutableIntStateOf(0) }
+            val previewState by produceState<PreviewState>(
+                initialValue = PreviewState.Loading,
+                item.id,
+                item.lastModified,
+                reloadToken
+            ) {
+                value = PreviewState.Loading
+                val file = vm.preview(item)
+                value = if (file != null) PreviewState.Ready(file) else PreviewState.Failed
             }
-            ZoomablePhoto(
-                file = file,
-                contentDescription = item.displayName,
-                resetKey = item.id,
-                onTap = { chromeVisible = !chromeVisible },
-                onZoomChanged = { pageZoom = it },
-                onCompareChanged = { comparing = it }
-            )
+            when (val state = previewState) {
+                is PreviewState.Ready -> ZoomablePhoto(
+                    file = state.file,
+                    contentDescription = item.displayName,
+                    resetKey = item.id,
+                    onTap = { chromeVisible = !chromeVisible },
+                    onZoomChanged = { pageZoom = it },
+                    onCompareChanged = { comparing = it }
+                )
+
+                PreviewState.Loading -> androidx.compose.foundation.layout.Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            color = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Text(
+                            text = "正在解码…",
+                            color = Color.White.copy(alpha = 0.7f),
+                            style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(top = 10.dp)
+                        )
+                    }
+                }
+
+                PreviewState.Failed -> Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Outlined.BrokenImage,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.6f),
+                        modifier = Modifier.size(34.dp)
+                    )
+                    Text(
+                        text = "这张图片无法解码（格式不支持或文件损坏）",
+                        color = Color.White.copy(alpha = 0.8f),
+                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 10.dp)
+                    )
+                    androidx.compose.material3.TextButton(onClick = {
+                        vm.invalidatePreview(item.id)
+                        reloadToken++
+                    }) { Text("重试", color = Color.White) }
+                }
+            }
         }
 
         // 顶部栏

@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.lumo.gallery.core.data.repo.AddLibraryResult
+import dev.lumo.gallery.core.data.repo.GroupedImportResult
 import dev.lumo.gallery.core.data.repo.LibraryRepository
 import dev.lumo.gallery.core.data.repo.MediaRepository
 import dev.lumo.gallery.core.data.repo.SettingsRepository
@@ -61,11 +62,15 @@ class HomeViewModel(
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
 
+    private val _importStatus = MutableStateFlow<String?>(null)
+    val importStatus: StateFlow<String?> = _importStatus.asStateFlow()
+
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val messages = _messages.asSharedFlow()
 
     init {
         libraries.refreshAllIfStale()
+        libraries.ensureAllThumbnails()
     }
 
     fun onFolderPicked(uri: Uri) {
@@ -83,6 +88,32 @@ class HomeViewModel(
                 }
             } finally {
                 _busy.value = false
+            }
+        }
+    }
+
+    fun onFolderPickedGrouped(uri: Uri) {
+        viewModelScope.launch {
+            _busy.value = true
+            try {
+                when (val result = libraries.addFolderGrouped(uri) { message ->
+                        _importStatus.value = message
+                    }) {
+                    is GroupedImportResult.Created -> {
+                        _messages.emit(
+                            "已创建 ${result.libraries.size} 个图库" +
+                                "（文件夹 ${result.folderLibraries} / 压缩包 ${result.archiveLibraries}），正在后台扫描…"
+                        )
+                        _importStatus.value = "正在后台扫描 ${result.libraries.size} 个图库…"
+                        libraries.startBatchScan(result.libraries.map { it.id })
+                    }
+                    GroupedImportResult.Empty ->
+                        _messages.emit("没有发现图片或压缩包")
+                    is GroupedImportResult.Failed -> _messages.emit(result.message)
+                }
+            } finally {
+                _busy.value = false
+                _importStatus.value = null
             }
         }
     }

@@ -31,7 +31,7 @@
 | `minSdk` | 26（Android 8.0） |
 | `targetSdk` | 36 |
 | `compileSdk` | 37 + `compileSdkMinor = 1`（Compose 1.13 要求 37.1+） |
-| 构建产物 | `app/build/outputs/apk/debug/app-debug.apk` |
+| 构建产物 | `app/build/outputs/apk/debug/app-debug.apk`（v0.2.0 / versionCode 2） |
 
 ## 依赖库
 
@@ -68,3 +68,4 @@
 4. **原计划的 libarchive 原生库未采用**：ZIP/7Z 用 commons-compress、RAR 用 junrar、加密 ZIP 用 zip4j，全部纯 JVM，可在单元测试里覆盖，也避免 16 KB page-size 风险。
 5. **内存约束**：本机 3.6 GB RAM / 2 核，构建改为 `-Xmx1400m`、`org.gradle.workers.max=1`、`kotlin.compiler.execution.strategy=in-process`，构建时间约 1.5–3 分钟。
 6. **`kotlin.sourceSets` 兼容**：加了 `android.disallowKotlinSourceSets=false`（AGP 9 内置 Kotlin 默认拒绝该 DSL）。
+7. **v0.2.0 数据迁移**：Room 升到 v2，`libraries` 增加 `treeRootRelPath`，带 `MIGRATION_1_2`（ALTER TABLE），升级不清库。
