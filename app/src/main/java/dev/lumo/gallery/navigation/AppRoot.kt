@@ -33,6 +33,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dev.lumo.gallery.LumoApp
 import dev.lumo.gallery.core.ui.LocalAppContainer
+import dev.lumo.gallery.feature.cleanup.CleanupScreen
+import dev.lumo.gallery.feature.editor.EditorScreen
 import dev.lumo.gallery.feature.explore.ExploreScreen
 import dev.lumo.gallery.feature.memory.MemoryScreen
 import dev.lumo.gallery.feature.memory.RandomScreen
@@ -41,6 +43,7 @@ import dev.lumo.gallery.feature.tags.TagsScreen
 import dev.lumo.gallery.feature.favorites.FavoritesScreen
 import dev.lumo.gallery.feature.home.HomeScreen
 import dev.lumo.gallery.feature.library.LibraryScreen
+import dev.lumo.gallery.feature.private.PrivateGateScreen
 import dev.lumo.gallery.feature.search.SearchScreen
 import dev.lumo.gallery.feature.settings.SettingsScreen
 import dev.lumo.gallery.feature.viewer.ViewerScreen
@@ -120,7 +123,9 @@ fun AppRoot() {
                 composable(Routes.HOME) {
                     HomeScreen(
                         onOpenLibrary = { id -> navController.navigate(Routes.library(id)) },
-                        onOpenSearch = { navController.navigate(Routes.SEARCH) }
+                        onOpenSearch = { navController.navigate(Routes.SEARCH) },
+                        onOpenPrivate = { navController.navigate(Routes.PRIVATE) },
+                        onOpenTags = { navController.navigate(Routes.TAGS) }
                     )
                 }
                 composable(Routes.FAVORITES) {
@@ -134,7 +139,8 @@ fun AppRoot() {
                     ExploreScreen(
                         onOpenTags = { navController.navigate(Routes.TAGS) },
                         onOpenMemory = { navController.navigate(Routes.MEMORY) },
-                        onOpenRandom = { navController.navigate(Routes.RANDOM) }
+                        onOpenRandom = { navController.navigate(Routes.RANDOM) },
+                        onOpenCleanup = { navController.navigate(Routes.CLEANUP) }
                     )
                 }
                 composable(Routes.TAGS) {
@@ -169,6 +175,28 @@ fun AppRoot() {
                         }
                     )
                 }
+                composable(Routes.PRIVATE) {
+                    PrivateGateScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenLibrary = { id -> navController.navigate(Routes.library(id)) }
+                    )
+                }
+                composable(Routes.CLEANUP) {
+                    CleanupScreen(onBack = { navController.popBackStack() })
+                }
+                composable(
+                    route = Routes.EDITOR,
+                    arguments = listOf(
+                        navArgument("libraryId") { type = NavType.StringType },
+                        navArgument("itemId") { type = NavType.StringType }
+                    )
+                ) { entry ->
+                    EditorScreen(
+                        libraryId = entry.arguments?.getString("libraryId").orEmpty(),
+                        itemId = entry.arguments?.getString("itemId").orEmpty(),
+                        onBack = { navController.popBackStack() }
+                    )
+                }
                 composable(Routes.RANDOM) {
                     RandomScreen(
                         onBack = { navController.popBackStack() },
@@ -197,7 +225,8 @@ fun AppRoot() {
                         onBack = { navController.popBackStack() },
                         onOpenViewer = { lib, item ->
                             navController.navigate(Routes.viewer(lib, item))
-                        }
+                        },
+                        onOpenPrivate = { navController.navigate(Routes.PRIVATE) }
                     )
                 }
                 composable(
@@ -210,7 +239,8 @@ fun AppRoot() {
                     ViewerScreen(
                         libraryId = entry.arguments?.getString("libraryId").orEmpty(),
                         itemId = entry.arguments?.getString("itemId").orEmpty(),
-                        onBack = { navController.popBackStack() }
+                        onBack = { navController.popBackStack() },
+                        onEdit = { lib, item -> navController.navigate(Routes.editor(lib, item)) }
                     )
                 }
             }

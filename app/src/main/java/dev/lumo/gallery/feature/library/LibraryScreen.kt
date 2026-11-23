@@ -8,6 +8,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,10 +23,16 @@ import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.BrokenImage
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Sell
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -33,6 +42,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -48,6 +58,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -61,7 +72,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.lumo.gallery.core.model.ScanProgress
 import dev.lumo.gallery.core.model.ScanStatus
+import dev.lumo.gallery.core.model.LibraryType
+import dev.lumo.gallery.core.model.MediaItem
 import dev.lumo.gallery.core.ui.LocalAppContainer
+import dev.lumo.gallery.core.security.SecureScreen
+import dev.lumo.gallery.core.util.ShareHelper
+import dev.lumo.gallery.feature.tags.TagEditorDialog
+import kotlinx.coroutines.launch
 import dev.lumo.gallery.core.ui.components.EmptyState
 import dev.lumo.gallery.core.ui.components.PhotoTile
 
@@ -70,7 +87,8 @@ import dev.lumo.gallery.core.ui.components.PhotoTile
 fun LibraryScreen(
     libraryId: String,
     onBack: () -> Unit,
-    onOpenViewer: (libraryId: String, itemId: String) -> Unit
+    onOpenViewer: (libraryId: String, itemId: String) -> Unit,
+    onOpenPrivate: () -> Unit = onBack
 ) {
     val container = LocalAppContainer.current
     val vm: LibraryViewModel = viewModel(
@@ -81,11 +99,17 @@ fun LibraryScreen(
     val scanProgress by vm.scanProgress.collectAsStateWithLifecycle()
     val continueInfo by vm.continueInfo.collectAsStateWithLifecycle()
 
+    val unlocked by container.privateAccess.unlocked.collectAsStateWithLifecycle()
+    SecureScreen(enabled = library?.isPrivate == true)
     val snackbar = remember { SnackbarHostState() }
     var menuOpen by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
     var passwordDialog by remember { mutableStateOf(false) }
     var passwordText by remember { mutableStateOf("") }
+    var actionItem by remember { mutableStateOf<MediaItem?>(null) }
+    var tagItem by remember { mutableStateOf<MediaItem?>(null) }
+    var deleteTarget by remember { mutableStateOf<MediaItem?>(null) }
+    val scope = rememberCoroutineScope()
 
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -189,6 +213,14 @@ fun LibraryScreen(
             ) {
             when {
                 library == null -> Unit
+                library?.isPrivate == true && !unlocked -> EmptyState(
+                    icon = Icons.Outlined.Lock,
+                    title = "私密图库",
+                    description = "这个图库已从首页隐藏，解锁后才能查看。",
+                    action = {
+                        TextButton(onClick = onOpenPrivate) { Text("去解锁") }
+                    }
+                )
                 items.isEmpty() -> EmptyState(
                     icon = when (library?.scanStatus) {
                         ScanStatus.PERMISSION_LOST -> Icons.Outlined.WarningAmber
@@ -228,7 +260,8 @@ fun LibraryScreen(
                         items(items, key = { it.id }) { item ->
                             PhotoTile(
                                 item = item,
-                                onClick = { onOpenViewer(libraryId, item.id) }
+                                onClick = { onOpenViewer(libraryId, item.id) },
+                                onLongClick = { actionItem = item }
                             )
                         }
                     }
@@ -280,6 +313,108 @@ fun LibraryScreen(
             }
             }
         }
+    }
+
+    actionItem?.let { item ->
+        ModalBottomSheet(onDismissRequest = { actionItem = null }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 28.dp)
+            ) {
+                Text(
+                    text = item.displayName,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                )
+                TextButton(
+                    onClick = {
+                        vm.toggleFavorite(item)
+                        actionItem = null
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = if (item.isFavorite) Icons.Outlined.Favorite else Icons.Outlined.FavoriteBorder,
+                        contentDescription = null
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(if (item.isFavorite) "取消收藏" else "收藏")
+                }
+                TextButton(
+                    onClick = {
+                        tagItem = item
+                        actionItem = null
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                ) {
+                    Icon(Icons.Outlined.Sell, contentDescription = null)
+                    Spacer(Modifier.width(10.dp))
+                    Text("标签")
+                }
+                TextButton(
+                    onClick = {
+                        val librarySnapshot = library
+                        actionItem = null
+                        if (librarySnapshot != null) {
+                            scope.launch {
+                                val ok = ShareHelper.share(context, container.streamProvider, librarySnapshot, item)
+                                if (!ok) snackbar.showSnackbar("分享失败")
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                ) {
+                    Icon(Icons.Outlined.Share, contentDescription = null)
+                    Spacer(Modifier.width(10.dp))
+                    Text("分享")
+                }
+                TextButton(
+                    onClick = {
+                        deleteTarget = item
+                        actionItem = null
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                ) {
+                    Icon(
+                        Icons.Outlined.DeleteOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+
+    tagItem?.let { item ->
+        TagEditorDialog(mediaId = item.id, onDismiss = { tagItem = null })
+    }
+
+    deleteTarget?.let { item ->
+        val isArchive = library?.type == LibraryType.ARCHIVE
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("删除这张图片？") },
+            text = {
+                Text(
+                    if (isArchive) "压缩包里的文件无法单独删除，只会从索引里移除。"
+                    else "会同时删除手机里的源文件，删除后不可恢复。"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.deleteItem(item, deleteFromDisk = !isArchive)
+                    deleteTarget = null
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) { Text("取消") }
+            }
+        )
     }
 
     if (passwordDialog) {

@@ -1,5 +1,8 @@
 package dev.lumo.gallery.core.data.repo
 
+import android.content.Context
+import android.net.Uri
+import android.provider.DocumentsContract
 import dev.lumo.gallery.core.data.db.LumoDatabase
 import dev.lumo.gallery.core.data.db.MediaItemEntity
 import dev.lumo.gallery.core.data.db.ReadingProgressEntity
@@ -14,7 +17,10 @@ import kotlinx.coroutines.flow.map
 /**
  * 图片级别的读写：瀑布流、收藏、搜索、随机、进度、标签。
  */
-class MediaRepository(private val db: LumoDatabase) {
+class MediaRepository(
+    private val db: LumoDatabase,
+    private val context: Context? = null
+) {
 
     private val mediaDao get() = db.mediaDao()
     private val tagDao get() = db.tagDao()
@@ -62,6 +68,36 @@ class MediaRepository(private val db: LumoDatabase) {
 
     suspend fun datedItems(): List<MediaItem> =
         mediaDao.getDatedOnce().map(MediaItemEntity::toModel)
+
+    suspend fun duplicateSizeGroups(): List<dev.lumo.gallery.core.data.db.SizeGroup> =
+        mediaDao.duplicateSizeGroups()
+
+    suspend fun itemsBySize(size: Long): List<MediaItem> =
+        mediaDao.itemsBySize(size).map(MediaItemEntity::toModel)
+
+    suspend fun itemsWithPhash(): List<MediaItem> =
+        mediaDao.itemsWithPhash().map(MediaItemEntity::toModel)
+
+    suspend fun itemsByMime(pattern: String): List<MediaItem> =
+        mediaDao.itemsByMime(pattern).map(MediaItemEntity::toModel)
+
+    /** 删除图片：deleteFromDisk 时同时删源文件（仅文件夹来源支持），压缩包只移除索引。 */
+    suspend fun deleteItem(item: MediaItem, deleteFromDisk: Boolean): Boolean {
+        var sourceDeleted = false
+        if (deleteFromDisk) {
+            val uri = item.docUri?.let(Uri::parse)
+            val ctx = context
+            if (uri != null && ctx != null) {
+                sourceDeleted = runCatching {
+                    DocumentsContract.deleteDocument(ctx.contentResolver, uri)
+                }.getOrDefault(false)
+            }
+        }
+        mediaDao.deleteById(item.id)
+        return sourceDeleted
+    }
+
+    suspend fun removeFromIndex(item: MediaItem) = mediaDao.deleteById(item.id)
 
     // ---------- 标签 ----------
 

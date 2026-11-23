@@ -4,6 +4,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,10 +13,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderZip
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -54,7 +57,9 @@ import kotlinx.coroutines.launch
 @Composable
 fun HomeScreen(
     onOpenLibrary: (String) -> Unit,
-    onOpenSearch: () -> Unit
+    onOpenSearch: () -> Unit,
+    onOpenPrivate: () -> Unit = {},
+    onOpenTags: () -> Unit = {}
 ) {
     val container = LocalAppContainer.current
     val vm: HomeViewModel = viewModel(factory = HomeViewModel.factory(container))
@@ -62,6 +67,8 @@ fun HomeScreen(
     val covers by vm.covers.collectAsStateWithLifecycle()
     val scanStates by vm.scanStates.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
+    val privateLibraries by vm.privateLibraries.collectAsStateWithLifecycle()
+    val tags by vm.tags.collectAsStateWithLifecycle()
 
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -88,6 +95,11 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text("拾光", style = MaterialTheme.typography.headlineSmall) },
                 actions = {
+                    if (privateLibraries.isNotEmpty()) {
+                        IconButton(onClick = onOpenPrivate) {
+                            Icon(Icons.Outlined.Lock, contentDescription = "私密空间")
+                        }
+                    }
                     IconButton(onClick = { archiveLauncher.launch(arrayOf("*/*")) }) {
                         Icon(Icons.Outlined.FolderZip, contentDescription = "导入压缩包")
                     }
@@ -119,10 +131,33 @@ fun HomeScreen(
                 }
             )
         } else {
+            Column {
+                if (tags.isNotEmpty()) {
+                    androidx.compose.foundation.lazy.LazyRow(
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(tags.size) { index ->
+                            val tag = tags[index]
+                            androidx.compose.material3.Surface(
+                                onClick = onOpenTags,
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+                                color = MaterialTheme.colorScheme.surfaceVariant
+                            ) {
+                                Text(
+                                    text = "# ${tag.name}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .weight(1f)
                     .padding(padding),
                 contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 96.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -137,6 +172,7 @@ fun HomeScreen(
                         onLongClick = { actionTarget = library }
                     )
                 }
+            }
             }
         }
     }
@@ -153,6 +189,10 @@ fun HomeScreen(
                     actionTarget = null
                     renameTarget = library
                     renameText = library.name
+                },
+                onTogglePrivate = {
+                    actionTarget = null
+                    vm.setPrivate(library, !library.isPrivate)
                 },
                 onDelete = {
                     actionTarget = null
@@ -210,6 +250,7 @@ private fun libraryActions(
     library: Library,
     onRescan: () -> Unit,
     onRename: () -> Unit,
+    onTogglePrivate: () -> Unit,
     onDelete: () -> Unit
 ) {
     androidx.compose.foundation.layout.Column(
@@ -234,6 +275,9 @@ private fun libraryActions(
         }
         androidx.compose.material3.TextButton(onClick = onRename, modifier = Modifier.padding(horizontal = 12.dp)) {
             Text("重命名")
+        }
+        androidx.compose.material3.TextButton(onClick = onTogglePrivate, modifier = Modifier.padding(horizontal = 12.dp)) {
+            Text(if (library.isPrivate) "取消私密" else "设为私密")
         }
         androidx.compose.material3.TextButton(onClick = onDelete, modifier = Modifier.padding(horizontal = 12.dp)) {
             Text("从图库移除", color = MaterialTheme.colorScheme.error)

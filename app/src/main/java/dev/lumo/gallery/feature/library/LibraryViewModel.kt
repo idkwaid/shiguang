@@ -104,6 +104,25 @@ class LibraryViewModel(
         }
     }
 
+    fun toggleFavorite(item: MediaItem) {
+        viewModelScope.launch { media.setFavorite(item.id, !item.isFavorite) }
+    }
+
+    fun deleteItem(item: MediaItem, deleteFromDisk: Boolean) {
+        viewModelScope.launch {
+            val deleted = media.deleteItem(item, deleteFromDisk)
+            _messages.emit(
+                if (deleteFromDisk && deleted) "已删除文件"
+                else if (deleteFromDisk) "源文件删除失败，已移出索引"
+                else "已移出索引（压缩包内文件不会改包）"
+            )
+        }
+    }
+
+    fun setNote(item: MediaItem, note: String) {
+        viewModelScope.launch { media.setNote(item.id, note) }
+    }
+
     fun submitPassword(password: String) {
         viewModelScope.launch {
             val ok = libraries.provideArchivePassword(libraryId, password)

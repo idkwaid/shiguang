@@ -10,6 +10,7 @@ import dev.lumo.gallery.core.archive.ArchiveStagingCache
 import dev.lumo.gallery.core.data.db.LumoDatabase
 import dev.lumo.gallery.core.data.repo.LibraryRepository
 import dev.lumo.gallery.core.data.repo.MediaRepository
+import dev.lumo.gallery.core.data.repo.SettingsRepository
 import dev.lumo.gallery.core.data.scan.ArchiveScanner
 import dev.lumo.gallery.core.data.scan.FolderScanner
 import dev.lumo.gallery.core.data.scan.MediaIndexer
@@ -25,6 +26,7 @@ import dev.lumo.gallery.core.image.ImageEnricher
 import dev.lumo.gallery.core.image.ThumbCache
 import dev.lumo.gallery.core.image.Thumbnailer
 import dev.lumo.gallery.core.model.LibraryType
+import dev.lumo.gallery.core.security.PrivateAccess
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -83,7 +85,9 @@ class AppContainer(context: Context) {
         archiveEntries = archiveEntries
     )
 
-    val mediaRepository = MediaRepository(database)
+    val mediaRepository = MediaRepository(database, appContext)
+    val settingsRepository = SettingsRepository(appContext)
+    val privateAccess = PrivateAccess()
 
     val imageLoader: ImageLoader = ImageLoader.Builder(appContext)
         .memoryCache {

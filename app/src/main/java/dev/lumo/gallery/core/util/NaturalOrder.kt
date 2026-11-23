@@ -6,7 +6,7 @@ package dev.lumo.gallery.core.util
  * 规则（与 [NaturalSortKey] 必须保持一致，由单测锁定）：
  * 1. 连续数字块按数值比较，忽略前导零；
  * 2. 数值相等时，前导零更少的排前面（"1" < "01" < "001"）；
- * 3. 非数字字符按小写后的码点比较，完全相等时再按原始大小写比较，保证稳定；
+ * 3. 非数字字符按小写后的码点比较（大小写不敏感），整串忽略大小写相同时再按原始字符串比较，保证稳定；
  * 4. 一方是另一方前缀时，短的排前面。
  *
  * 用于内存排序（收藏、搜索结果、归档条目兜底）与测试基准。
@@ -31,13 +31,18 @@ object NaturalOrder : Comparator<String> {
                 i = endA
                 j = endB
             } else {
-                val cmp = compareChars(ca, cb)
-                if (cmp != 0) return cmp
+                val la = ca.lowercaseChar()
+                val lb = cb.lowercaseChar()
+                if (la != lb) return la.compareTo(lb)
+                // 大小写差异不打断比较，让后面的数字块决定顺序（IMG3 与 img2 由 3/2 决定）
                 i++
                 j++
             }
         }
-        return (a.length - i) - (b.length - j)
+        val rest = (a.length - i) - (b.length - j)
+        if (rest != 0) return rest
+        // 忽略大小写后完全相同：用原始字符串比较兜底（"A" < "a"），与 SQL 的 BINARY 排序一致
+        return a.compareTo(b)
     }
 
     private fun Char.isAsciiDigit(): Boolean = this in '0'..'9'
@@ -71,13 +76,6 @@ object NaturalOrder : Comparator<String> {
         return 0
     }
 
-    private fun compareChars(a: Char, b: Char): Int {
-        val la = a.lowercaseChar()
-        val lb = b.lowercaseChar()
-        if (la != lb) return la.compareTo(lb)
-        // 小写相同：大写优先，保证 "A" < "a" 的稳定顺序
-        return a.compareTo(b)
-    }
 
     /** 排序用便捷扩展：稳定的自然序。 */
     fun <T> comparatorBy(selector: (T) -> String?): Comparator<T> =

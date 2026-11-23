@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.Casino
 import androidx.compose.material.icons.outlined.Sell
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -33,7 +34,8 @@ import androidx.compose.ui.unit.dp
 fun ExploreScreen(
     onOpenTags: () -> Unit,
     onOpenMemory: () -> Unit,
-    onOpenRandom: () -> Unit
+    onOpenRandom: () -> Unit,
+    onOpenCleanup: () -> Unit
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -70,9 +72,15 @@ fun ExploreScreen(
                 subtitle = "从全部图库里抽 60 张，换一批再抽",
                 onClick = onOpenRandom
             )
+            ExploreCard(
+                icon = Icons.Outlined.CleaningServices,
+                title = "智能清理",
+                subtitle = "重复图、相似图、大体积 GIF/HEIC 一网打尽",
+                onClick = onOpenCleanup
+            )
             Box(Modifier.fillMaxSize()) {
                 Text(
-                    text = "智能清理、私密空间入口在后续里程碑开放。",
+                    text = "私密空间入口在 M7 开放。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier

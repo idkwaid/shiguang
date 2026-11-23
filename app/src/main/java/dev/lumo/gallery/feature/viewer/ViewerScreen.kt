@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Share
@@ -59,11 +62,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.pointer.pointerInput
@@ -78,6 +84,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
 import dev.lumo.gallery.core.image.ExifDates
+import dev.lumo.gallery.core.data.repo.AppSettings
+import dev.lumo.gallery.core.image.ExifInfo
+import dev.lumo.gallery.core.security.SecureScreen
+import dev.lumo.gallery.core.image.ExifReader
 import dev.lumo.gallery.core.image.PaletteExtractor
 import dev.lumo.gallery.core.model.MediaItem
 import dev.lumo.gallery.core.ui.LocalAppContainer
@@ -100,7 +110,8 @@ import java.util.Locale
 fun ViewerScreen(
     libraryId: String,
     itemId: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onEdit: (String, String) -> Unit = { _, _ -> }
 ) {
     val container = LocalAppContainer.current
     val vm: ViewerViewModel = viewModel(
@@ -111,17 +122,43 @@ fun ViewerScreen(
     val startIndex by vm.startIndex.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val favoriteIds by vm.favoriteIds.collectAsStateWithLifecycle()
+    val privateLibrary by vm.privateLibrary.collectAsStateWithLifecycle()
+    val privateUnlocked by container.privateAccess.unlocked.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     BackHandler(onBack = onBack)
     ImmersiveViewer()
+    SecureScreen(enabled = privateLibrary)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
+        if (privateLibrary && !privateUnlocked) {
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Outlined.Lock,
+                    contentDescription = "已锁定",
+                    tint = Color.White,
+                    modifier = Modifier.size(32.dp)
+                )
+                Text(
+                    text = "私密空间已锁定",
+                    color = Color.White,
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+                androidx.compose.material3.TextButton(onClick = onBack) {
+                    Text("返回", color = Color.White)
+                }
+            }
+            return@Box
+        }
+
         if (loading || items.isEmpty()) {
             androidx.compose.material3.CircularProgressIndicator(
                 color = Color.White,
@@ -143,6 +180,11 @@ fun ViewerScreen(
         var showInfo by remember { mutableStateOf(false) }
         var comparing by remember { mutableStateOf(false) }
         var accent by remember { mutableStateOf<Color?>(null) }
+        var slideshowRandom by remember { mutableStateOf(false) }
+        val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(
+            initialValue = AppSettings()
+        )
+        val intervalMs = settings.slideshowIntervalSec * 1000L
 
         LaunchedEffect(pagerState) {
             snapshotFlow { pagerState.settledPage }
@@ -156,11 +198,19 @@ fun ViewerScreen(
             accent = withContext(Dispatchers.IO) { PaletteExtractor.fromFile(vm.preview(item)) }
         }
 
-        LaunchedEffect(slideshow, items.size) {
+        LaunchedEffect(slideshow, slideshowRandom, intervalMs, items.size) {
             if (!slideshow || items.size <= 1) return@LaunchedEffect
             while (true) {
-                delay(3_000)
-                val next = (pagerState.currentPage + 1) % items.size
+                delay(intervalMs)
+                val next = if (slideshowRandom) {
+                    var candidate = pagerState.currentPage
+                    while (candidate == pagerState.currentPage && items.size > 1) {
+                        candidate = kotlin.random.Random.nextInt(items.size)
+                    }
+                    candidate
+                } else {
+                    (pagerState.currentPage + 1) % items.size
+                }
                 pagerState.animateScrollToPage(next)
             }
         }
@@ -220,11 +270,20 @@ fun ViewerScreen(
                     }
                 }
                 val favorite = current != null && favoriteIds.contains(current.id)
+                val heartScale by animateFloatAsState(
+                    targetValue = if (favorite) 1.18f else 1f,
+                    animationSpec = spring(dampingRatio = 0.45f, stiffness = 520f),
+                    label = "heart"
+                )
                 IconButton(onClick = { current?.let(vm::toggleFavorite) }) {
                     Icon(
                         imageVector = if (favorite) Icons.Outlined.Favorite else Icons.Outlined.FavoriteBorder,
                         contentDescription = if (favorite) "取消收藏" else "收藏",
-                        tint = if (favorite) Color(0xFFE45C7B) else Color.White
+                        tint = if (favorite) Color(0xFFE45C7B) else Color.White,
+                        modifier = Modifier.graphicsLayer {
+                            scaleX = heartScale
+                            scaleY = heartScale
+                        }
                     )
                 }
                 IconButton(onClick = {
@@ -252,23 +311,47 @@ fun ViewerScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (slideshow) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = Color(0x66000000),
-                    contentColor = Color.White,
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(bottom = 10.dp)
                 ) {
-                    Text(
-                        text = "自动播放中 · 3 秒/张",
-                        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
-                    )
+                    val intervals = listOf(2, 3, 5, 10)
+                    Surface(
+                        onClick = {
+                            val next = intervals[(intervals.indexOf(settings.slideshowIntervalSec).coerceAtLeast(0) + 1) % intervals.size]
+                            scope.launch {
+                                container.settingsRepository.setSlideshowInterval(next)
+                            }
+                        },
+                        shape = RoundedCornerShape(50),
+                        color = Color(0x66000000),
+                        contentColor = Color.White
+                    ) {
+                        Text(
+                            text = "${settings.slideshowIntervalSec} 秒/张",
+                            style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                        )
+                    }
+                    Surface(
+                        onClick = { slideshowRandom = !slideshowRandom },
+                        shape = RoundedCornerShape(50),
+                        color = if (slideshowRandom) (accent ?: Color(0xFFB8865B)).copy(alpha = 0.6f)
+                        else Color(0x66000000),
+                        contentColor = Color.White
+                    ) {
+                        Text(
+                            text = if (slideshowRandom) "随机 · 开" else "随机",
+                            style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                        )
+                    }
                 }
             }
             Surface(
                 onClick = { showThumbnails = true },
                 shape = RoundedCornerShape(50),
-                color = Color(0x66000000),
+                color = accent?.copy(alpha = 0.38f) ?: Color(0x66000000),
                 contentColor = Color.White
             ) {
                 Text(
@@ -299,7 +382,9 @@ fun ViewerScreen(
                         showInfo = true
                     }
                     ViewerAction(Icons.Outlined.Edit, "编辑") {
-                        Toast.makeText(context, "编辑功能在 M6 里接进来", Toast.LENGTH_SHORT).show()
+                        items.getOrNull(pagerState.currentPage)?.let { item ->
+                            onEdit(item.libraryId, item.id)
+                        }
                     }
                 }
             }
@@ -367,7 +452,7 @@ fun ViewerScreen(
         }
         if (showInfo) {
             items.getOrNull(pagerState.currentPage)?.let { item ->
-                InfoSheet(item = item, onDismiss = { showInfo = false })
+                InfoSheet(item = item, vm = vm, onDismiss = { showInfo = false })
             }
         }
     }
@@ -473,12 +558,22 @@ private fun ThumbnailSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InfoSheet(item: MediaItem, onDismiss: () -> Unit) {
+private fun InfoSheet(item: MediaItem, vm: ViewerViewModel, onDismiss: () -> Unit) {
+    val container = LocalAppContainer.current
+    val exif by produceState<ExifInfo?>(initialValue = null, item.id, item.lastModified) {
+        val library = vm.libraryOf(item)
+        value = if (library == null) null else ExifReader.read(container.streamProvider, library, item)
+    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = Color(0xFF141414)
     ) {
-        Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 18.dp, vertical = 4.dp)
+        ) {
             Text(
                 text = item.displayName,
                 color = Color.White,
@@ -487,16 +582,30 @@ private fun InfoSheet(item: MediaItem, onDismiss: () -> Unit) {
                 overflow = TextOverflow.Ellipsis
             )
             androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
+
+            val camera = listOfNotNull(exif?.make, exif?.model).joinToString(" ").trim()
+            if (camera.isNotEmpty()) InfoRow("相机", camera)
+            if (!exif?.lens.isNullOrBlank()) InfoRow("镜头", exif!!.lens!!)
+            if (!exif?.iso.isNullOrBlank()) InfoRow("ISO", exif!!.iso!!)
+            if (!exif?.aperture.isNullOrBlank()) InfoRow("光圈", exif!!.aperture!!)
+            if (!exif?.shutter.isNullOrBlank()) InfoRow("快门", exif!!.shutter!!)
+            if (!exif?.focalLength.isNullOrBlank()) InfoRow("焦距", exif!!.focalLength!!)
             InfoRow("尺寸", if (item.width > 0) "${item.width} × ${item.height}" else "未知")
+            InfoRow("分辨率", exif?.pixelWidth?.let { w -> "${w} × ${exif?.pixelHeight ?: 0}" } ?: "—")
             InfoRow("大小", formatBytes(item.sizeBytes))
             InfoRow("拍摄/修改", ExifDates.formatDateTime(item.dateTaken ?: item.lastModified))
+            if (exif?.hasGps == true) {
+                InfoRow("位置", String.format(Locale.US, "%.5f, %.5f", exif!!.latitude, exif!!.longitude))
+            }
+            if (!exif?.whiteBalance.isNullOrBlank()) InfoRow("白平衡", exif!!.whiteBalance!!)
+            if (!exif?.flash.isNullOrBlank()) InfoRow("闪光灯", exif!!.flash!!)
             InfoRow("格式", item.mime)
             InfoRow("路径", item.locator)
             InfoRow("收藏", if (item.isFavorite) "是" else "否")
             if (item.note != null) InfoRow("备注", item.note)
             HorizontalDivider(color = Color(0xFF2A2A2A), modifier = Modifier.padding(vertical = 8.dp))
             Text(
-                text = "完整 EXIF（相机、光圈、ISO、GPS）在 M6 接入。",
+                text = if (exif == null) "该格式没有可读的 EXIF 信息。" else "EXIF 只在本机读取，不会上传。",
                 color = Color.White.copy(alpha = 0.45f),
                 style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
                 modifier = Modifier.padding(bottom = 24.dp)

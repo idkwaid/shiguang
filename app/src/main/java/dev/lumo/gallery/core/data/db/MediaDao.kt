@@ -5,6 +5,11 @@ import androidx.room.Query
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
+data class SizeGroup(
+    val sizeBytes: Long,
+    val count: Int
+)
+
 @Dao
 interface MediaDao {
 
@@ -123,4 +128,25 @@ interface MediaDao {
             "WHERE m.isPresent = 1 AND m.isFavorite = 1 AND l.isPrivate = 0 ORDER BY RANDOM() LIMIT :limit"
     )
     suspend fun randomFavoritesSample(limit: Int): List<MediaItemEntity>
+
+    @Query(
+        "SELECT sizeBytes, COUNT(*) AS count FROM media_items WHERE isPresent = 1 " +
+            "GROUP BY sizeBytes HAVING count > 1 ORDER BY count DESC LIMIT 200"
+    )
+    suspend fun duplicateSizeGroups(): List<SizeGroup>
+
+    @Query("SELECT * FROM media_items WHERE isPresent = 1 AND sizeBytes = :size LIMIT 64")
+    suspend fun itemsBySize(size: Long): List<MediaItemEntity>
+
+    @Query(
+        "SELECT m.* FROM media_items m INNER JOIN libraries l ON l.id = m.libraryId " +
+            "WHERE m.isPresent = 1 AND m.phash IS NOT NULL AND l.isPrivate = 0 LIMIT 20000"
+    )
+    suspend fun itemsWithPhash(): List<MediaItemEntity>
+
+    @Query(
+        "SELECT * FROM media_items WHERE isPresent = 1 AND mime LIKE :pattern " +
+            "ORDER BY sizeBytes DESC LIMIT 200"
+    )
+    suspend fun itemsByMime(pattern: String): List<MediaItemEntity>
 }

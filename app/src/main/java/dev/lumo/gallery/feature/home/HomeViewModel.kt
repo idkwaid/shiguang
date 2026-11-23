@@ -6,10 +6,12 @@ import androidx.lifecycle.viewModelScope
 import dev.lumo.gallery.core.data.repo.AddLibraryResult
 import dev.lumo.gallery.core.data.repo.LibraryRepository
 import dev.lumo.gallery.core.data.repo.MediaRepository
+import dev.lumo.gallery.core.data.repo.SettingsRepository
 import dev.lumo.gallery.core.data.scan.ScanProgressBus
 import dev.lumo.gallery.core.model.Library
 import dev.lumo.gallery.core.model.MediaItem
 import dev.lumo.gallery.core.model.ScanProgress
+import dev.lumo.gallery.core.model.Tag
 import dev.lumo.gallery.core.ui.viewModelFactoryOf
 import dev.lumo.gallery.di.AppContainer
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -27,6 +29,7 @@ import kotlinx.coroutines.launch
 class HomeViewModel(
     private val libraries: LibraryRepository,
     private val media: MediaRepository,
+    private val settings: SettingsRepository,
     progressBus: ScanProgressBus
 ) : ViewModel() {
 
@@ -44,6 +47,16 @@ class HomeViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     val scanStates: StateFlow<Map<String, ScanProgress>> = progressBus.states
+
+    val privateLibraries: StateFlow<List<Library>> = libraries.observePrivate()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val tags: StateFlow<List<Tag>> = media.observeTags()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val hasPin: StateFlow<Boolean> = settings.settings
+        .map { it.hasPin }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
@@ -101,6 +114,17 @@ class HomeViewModel(
         viewModelScope.launch { _messages.emit("正在重新扫描…") }
     }
 
+    fun setPrivate(library: Library, enable: Boolean) {
+        viewModelScope.launch {
+            if (enable && !hasPin.value) {
+                _messages.emit("请先在「设置」里设置私密密码")
+                return@launch
+            }
+            libraries.setPrivate(library.id, enable)
+            _messages.emit(if (enable) "已隐藏「${library.name}」到私密空间" else "已取消私密")
+        }
+    }
+
     fun rename(libraryId: String, name: String) {
         viewModelScope.launch { libraries.rename(libraryId, name) }
     }
@@ -118,6 +142,7 @@ class HomeViewModel(
                 HomeViewModel(
                     libraries = container.libraryRepository,
                     media = container.mediaRepository,
+                    settings = container.settingsRepository,
                     progressBus = container.progressBus
                 )
             }

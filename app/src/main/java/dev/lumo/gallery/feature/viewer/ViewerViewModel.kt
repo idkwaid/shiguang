@@ -41,8 +41,12 @@ class ViewerViewModel(
 
     private val previewCache = mutableMapOf<String, File?>()
 
+    private val _privateLibrary = MutableStateFlow(false)
+    val privateLibrary: StateFlow<Boolean> = _privateLibrary.asStateFlow()
+
     init {
         viewModelScope.launch {
+            _privateLibrary.value = libraries.get(libraryId)?.isPrivate == true
             val list = withContext(Dispatchers.IO) { media.libraryItems(libraryId) }
             _items.value = list
             _startIndex.value = list.indexOfFirst { it.id == startItemId }.coerceAtLeast(0)

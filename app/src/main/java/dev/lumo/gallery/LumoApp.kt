@@ -1,6 +1,9 @@
 package dev.lumo.gallery
 
 import android.app.Application
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import coil3.SingletonImageLoader
 import dev.lumo.gallery.core.data.scan.LibraryScanWorker
 import dev.lumo.gallery.di.AppContainer
@@ -19,6 +22,12 @@ class LumoApp : Application() {
         container = AppContainer(this)
         SingletonImageLoader.setUnsafe(container.imageLoader)
         LibraryScanWorker.schedule(this)
+        // 私密空间：App 退到后台即上锁
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStop(owner: LifecycleOwner) {
+                container.privateAccess.lock()
+            }
+        })
     }
 
     companion object {

@@ -48,6 +48,8 @@ class ImageEnricher(
                     thumbnailer.generate(library, item, provider)
                 }.getOrNull()
                 if (result != null) {
+                    val hash = PHash.fromFile(result.file)
+                    if (hash != null) db.mediaDao().setPhash(item.id, PHash.toHex(hash))
                     db.mediaDao().updateEnrichment(
                         id = item.id,
                         width = result.width,
