@@ -19,7 +19,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderZip
+import androidx.compose.material.icons.outlined.Casino
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Sell
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -71,6 +73,7 @@ fun HomeScreen(
     val privateLibraries by vm.privateLibraries.collectAsStateWithLifecycle()
     val tags by vm.tags.collectAsStateWithLifecycle()
     val importStatus by vm.importStatus.collectAsStateWithLifecycle()
+    val childCounts by vm.childCounts.collectAsStateWithLifecycle()
     var folderChoice by remember { mutableStateOf<Uri?>(null) }
 
     val snackbar = remember { SnackbarHostState() }
@@ -102,6 +105,20 @@ fun HomeScreen(
                         IconButton(onClick = onOpenPrivate) {
                             Icon(Icons.Outlined.Lock, contentDescription = "私密空间")
                         }
+                    }
+                    IconButton(onClick = onOpenTags) {
+                        Icon(Icons.Outlined.Sell, contentDescription = "标签")
+                    }
+                    IconButton(onClick = {
+                        val pool = libraries
+                        if (pool.isEmpty()) {
+                            scope.launch { snackbar.showSnackbar("还没有图库") }
+                        } else {
+                            val pick = pool.random()
+                            onOpenLibrary(pick.id)
+                        }
+                    }) {
+                        Icon(Icons.Outlined.Casino, contentDescription = "随机图库")
                     }
                     IconButton(onClick = { archiveLauncher.launch(arrayOf("*/*")) }) {
                         Icon(Icons.Outlined.FolderZip, contentDescription = "导入压缩包")
@@ -190,6 +207,7 @@ fun HomeScreen(
                         library = library,
                         cover = library.coverItemId?.let { covers[it] },
                         scanning = scanStates[library.id],
+                        childCount = childCounts[library.id] ?: 0,
                         onClick = { onOpenLibrary(library.id) },
                         onLongClick = { actionTarget = library }
                     )

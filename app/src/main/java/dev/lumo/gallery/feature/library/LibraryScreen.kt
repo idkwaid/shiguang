@@ -20,9 +20,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.BrokenImage
+import androidx.compose.material.icons.outlined.Casino
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Info
@@ -81,6 +83,7 @@ import dev.lumo.gallery.core.security.SecureScreen
 import dev.lumo.gallery.core.util.ShareHelper
 import dev.lumo.gallery.feature.tags.TagEditorDialog
 import kotlinx.coroutines.launch
+import dev.lumo.gallery.core.ui.components.ChildLibraryCard
 import dev.lumo.gallery.core.ui.components.EmptyState
 import dev.lumo.gallery.core.ui.components.PhotoTile
 
@@ -91,7 +94,8 @@ fun LibraryScreen(
     onBack: () -> Unit,
     onOpenViewer: (libraryId: String, itemId: String) -> Unit,
     onOpenPrivate: () -> Unit = onBack,
-    onOpenEditor: (libraryId: String, itemId: String) -> Unit = { _, _ -> }
+    onOpenEditor: (libraryId: String, itemId: String) -> Unit = { _, _ -> },
+    onOpenLibrary: (String) -> Unit = { _ -> onBack() }
 ) {
     val container = LocalAppContainer.current
     val vm: LibraryViewModel = viewModel(
@@ -101,6 +105,8 @@ fun LibraryScreen(
     val items by vm.items.collectAsStateWithLifecycle()
     val scanProgress by vm.scanProgress.collectAsStateWithLifecycle()
     val continueInfo by vm.continueInfo.collectAsStateWithLifecycle()
+    val children by vm.children.collectAsStateWithLifecycle()
+    val childCovers by vm.childCovers.collectAsStateWithLifecycle()
 
     val unlocked by container.privateAccess.unlocked.collectAsStateWithLifecycle()
     SecureScreen(enabled = library?.isPrivate == true)
@@ -174,6 +180,25 @@ fun LibraryScreen(
                     )
                 },
                 actions = {
+                    IconButton(onClick = {
+                        val childList = children
+                        val itemList = items
+                        val total = childList.size + itemList.size
+                        if (total == 0) {
+                            scope.launch { snackbar.showSnackbar("这个图库还没有可随机的图片或子库") }
+                        } else {
+                            val index = kotlin.random.Random.nextInt(total)
+                            if (index < childList.size) {
+                                onOpenLibrary(childList[index].id)
+                            } else {
+                                itemList.getOrNull(index - childList.size)?.let { item ->
+                                    onOpenViewer(libraryId, item.id)
+                                }
+                            }
+                        }
+                    }) {
+                        Icon(Icons.Outlined.Casino, contentDescription = "随机本图库")
+                    }
                     IconButton(onClick = { vm.refresh() }) {
                         Icon(Icons.Outlined.Refresh, contentDescription = "刷新")
                     }
@@ -232,7 +257,7 @@ fun LibraryScreen(
                         TextButton(onClick = onOpenPrivate) { Text("去解锁") }
                     }
                 )
-                items.isEmpty() -> EmptyState(
+                items.isEmpty() && children.isEmpty() -> EmptyState(
                     icon = when (library?.scanStatus) {
                         ScanStatus.PERMISSION_LOST -> Icons.Outlined.WarningAmber
                         ScanStatus.EMPTY -> Icons.Outlined.FolderOpen
@@ -260,20 +285,60 @@ fun LibraryScreen(
                         }
                     }
                 )
-                else -> {
-                    LazyVerticalStaggeredGrid(
-                        columns = StaggeredGridCells.Fixed(2),
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(12.dp, 4.dp, 12.dp, 90.dp),
-                        verticalItemSpacing = 8.dp,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(items, key = { it.id }) { item ->
-                            PhotoTile(
-                                item = item,
-                                onClick = { onOpenViewer(libraryId, item.id) },
-                                onLongClick = { actionItem = item }
+                else -> Box(Modifier.fillMaxSize()) {
+                    Column(Modifier.fillMaxSize()) {
+                        if (children.isNotEmpty()) {
+                            Text(
+                                text = "子图库 · ${children.size}",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 2.dp)
                             )
+                            androidx.compose.foundation.lazy.LazyRow(
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                items(children, key = { it.id }) { child ->
+                                    ChildLibraryCard(
+                                        library = child,
+                                        cover = childCovers[child.coverItemId],
+                                        onClick = { onOpenLibrary(child.id) }
+                                    )
+                                }
+                            }
+                        }
+
+                        if (items.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "这个图库只有子图库，点上方卡片继续浏览",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            LazyVerticalStaggeredGrid(
+                                columns = StaggeredGridCells.Fixed(2),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                contentPadding = PaddingValues(12.dp, 4.dp, 12.dp, 90.dp),
+                                verticalItemSpacing = 8.dp,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(items, key = { it.id }) { item ->
+                                    PhotoTile(
+                                        item = item,
+                                        onClick = { onOpenViewer(libraryId, item.id) },
+                                        onLongClick = { actionItem = item }
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -298,7 +363,6 @@ fun LibraryScreen(
                             )
                         }
                     }
-
                     val progress = scanProgress
                     if (progress != null && progress.phase != dev.lumo.gallery.core.model.ScanProgress.Phase.DONE) {
                         Box(

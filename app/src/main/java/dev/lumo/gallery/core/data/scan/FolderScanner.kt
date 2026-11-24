@@ -9,6 +9,7 @@ import dev.lumo.gallery.core.data.source.PermissionLostException
 import dev.lumo.gallery.core.data.source.SafPermissions
 import dev.lumo.gallery.core.util.AppLog
 import dev.lumo.gallery.core.model.ScanProgress
+import dev.lumo.gallery.core.model.ScanMode
 import dev.lumo.gallery.core.model.ScanStatus
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -74,7 +75,8 @@ class FolderScanner(
             walker.walk(
                 treeUri = treeUri,
                 startDocId = startDocId ?: DocumentsContract.getTreeDocumentId(treeUri),
-                startRelPath = library.treeRootRelPath.orEmpty()
+                startRelPath = library.treeRootRelPath.orEmpty(),
+                maxDepth = if (library.scanMode == ScanMode.DIRECT.name) 1 else Int.MAX_VALUE
             ) { scanned ->
                 progressBus.update(
                     ScanProgress(
@@ -106,17 +108,21 @@ class FolderScanner(
 
         if (entries.isEmpty()) {
             indexer.markEmpty(libraryId)
+            val children = db.libraryDao().getChildren(libraryId)
+            val cover = library.coverItemId
+                ?: children.firstOrNull { it.coverItemId != null }?.coverItemId
+            val hasChildren = children.isNotEmpty()
             db.libraryDao().updateScanResult(
                 id = libraryId,
                 lastScanAt = System.currentTimeMillis(),
                 itemCount = 0,
-                coverItemId = null,
-                scanStatus = ScanStatus.EMPTY.name,
+                coverItemId = cover,
+                scanStatus = if (hasChildren) ScanStatus.OK.name else ScanStatus.EMPTY.name,
                 lastError = null,
                 isAvailable = true
             )
             progressBus.clear(libraryId)
-            return@withContext ScanOutcome.Empty
+            return@withContext if (hasChildren) ScanOutcome.Success(0) else ScanOutcome.Empty
         }
 
         progressBus.update(

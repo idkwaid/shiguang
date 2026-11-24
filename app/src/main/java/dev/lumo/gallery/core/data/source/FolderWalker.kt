@@ -57,6 +57,8 @@ class FolderWalker(
         treeUri: Uri,
         startDocId: String = DocumentsContract.getTreeDocumentId(treeUri),
         startRelPath: String = "",
+        /** 1 = 只扫直接子项（分组图库的叶子节点）；Int.MAX_VALUE = 递归。 */
+        maxDepth: Int = Int.MAX_VALUE,
         onProgress: (scannedFiles: Int) -> Unit = {}
     ): List<ScannedEntry> = withContext(io) {
         val result = ArrayList<ScannedEntry>(128)
@@ -67,6 +69,7 @@ class FolderWalker(
             dirDocId = startDocId,
             parentPath = startRelPath,
             depth = 0,
+            maxDepth = maxDepth,
             out = result,
             visitedDirs = visitedDirs,
             onFile = { scanned++; if (scanned % 50 == 0) onProgress(scanned) }
@@ -149,6 +152,7 @@ class FolderWalker(
         dirDocId: String,
         parentPath: String,
         depth: Int,
+        maxDepth: Int,
         out: MutableList<ScannedEntry>,
         visitedDirs: MutableSet<String>,
         onFile: () -> Unit
@@ -159,7 +163,9 @@ class FolderWalker(
         for (child in queryChildren(treeUri, dirDocId, parentPath)) {
             currentCoroutineContext().ensureActive()
             if (child.isDir) {
-                walkDir(treeUri, child.docId, child.relPath, depth + 1, out, visitedDirs, onFile)
+                if (depth < maxDepth) {
+                    walkDir(treeUri, child.docId, child.relPath, depth + 1, maxDepth, out, visitedDirs, onFile)
+                }
             } else if (MimeTypes.isImage(child.name, child.mime)) {
                 out.add(
                     ScannedEntry(

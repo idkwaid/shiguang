@@ -49,6 +49,9 @@ class HomeViewModel(
 
     val scanStates: StateFlow<Map<String, ScanProgress>> = progressBus.states
 
+    val childCounts: StateFlow<Map<String, Int>> = libraries.observeChildCounts()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
     val privateLibraries: StateFlow<List<Library>> = libraries.observePrivate()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -101,12 +104,14 @@ class HomeViewModel(
                     }) {
                     is GroupedImportResult.Created -> {
                         _messages.emit(
-                            "已创建 ${result.libraries.size} 个图库" +
-                                "（文件夹 ${result.folderLibraries} / 压缩包 ${result.archiveLibraries}），正在后台扫描…"
+                            "已按目录结构创建 ${result.libraries.size} 个图库" +
+                                "（文件夹 ${result.folderLibraries} / 压缩包 ${result.archiveLibraries}）"
                         )
                         _importStatus.value = "正在后台扫描 ${result.libraries.size} 个图库…"
                         libraries.startBatchScan(result.libraries.map { it.id })
                     }
+                    is GroupedImportResult.AlreadyImported ->
+                        _messages.emit("「${result.library.name}」已经导入过了；若是旧版整体导入，可先长按移除（不删源文件）再用分组导入")
                     GroupedImportResult.Empty ->
                         _messages.emit("没有发现图片或压缩包")
                     is GroupedImportResult.Failed -> _messages.emit(result.message)

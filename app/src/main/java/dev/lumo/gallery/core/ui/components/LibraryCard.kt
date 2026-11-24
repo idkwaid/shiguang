@@ -47,6 +47,7 @@ fun LibraryCard(
     cover: MediaItem?,
     scanning: ScanProgress?,
     modifier: Modifier = Modifier,
+    childCount: Int = 0,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null
 ) {
@@ -138,7 +139,11 @@ fun LibraryCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "${library.itemCount} 张",
+                    text = when {
+                        library.itemCount == 0 && childCount > 0 -> "$childCount 个子图库"
+                        childCount > 0 -> "${library.itemCount} 张 · $childCount 个子图库"
+                        else -> "${library.itemCount} 张"
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -169,6 +174,74 @@ fun LibraryCard(
                 }
             }
         }
+    }
+}
+
+/** 图库页里的子图库卡片（层级浏览用）。 */
+@Composable
+fun ChildLibraryCard(
+    library: Library,
+    cover: MediaItem?,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val container = LocalAppContainer.current
+    val coverFile = cover?.let {
+        container.thumbCache.existing(it.libraryId, it.id, it.lastModified)
+    }
+    Column(
+        modifier = modifier
+            .width(132.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .combinedClickable(onClick = onClick)
+            .padding(bottom = 2.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1.15f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            if (coverFile != null) {
+                AsyncImage(
+                    model = coverFile,
+                    contentDescription = library.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Icon(
+                    imageVector = if (library.isArchive) Icons.Outlined.FolderZip else Icons.Outlined.Image,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(26.dp)
+                )
+            }
+            Surface(
+                color = androidx.compose.ui.graphics.Color(0x99000000),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp)
+            ) {
+                Text(
+                    text = "${library.itemCount}",
+                    color = androidx.compose.ui.graphics.Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+        }
+        Text(
+            text = library.name,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 5.dp, start = 2.dp, end = 2.dp)
+        )
     }
 }
 

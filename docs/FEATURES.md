@@ -7,7 +7,7 @@
 | # | 功能 | 实现 | 代码位置 | 状态 |
 |---|---|---|---|---|
 | 1.1 | 多源导入：文件夹、文件夹内压缩包、ZIP/RAR/7Z 压缩包 | SAF `OpenDocumentTree` / `OpenDocument`；分组导入会识别选中目录里的 `.zip/.rar/.7z` 并各建虚拟图库；`MediaSource` 抽象统一遍历与读流 | `core/data/source/`、`core/archive/`、`LibraryRepository.addFolderGrouped` | ✅ |
-| 1.2 | 独立图库归类；按嵌套结构细分；压缩包内子目录平铺 | 每个 folder/archive 一个 `libraries` 行；分组导入按“直接含图片的目录”拆库（`treeRootRelPath`）；压缩包条目平铺 | `LibraryRepository.addFolderGrouped`、`ArchiveScanner`、DB v2 迁移 | ✅ |
+| 1.2 | 独立图库归类；按嵌套结构建层级图库；压缩包内子目录平铺 | 分组导入镜像目录树：顶层图库 + `parentId` 子图库（可多级）；每节点只扫直接图片；压缩包作为所在目录的子图库 | `LibraryRepository.addFolderGrouped`、`parentId`、DB v3 迁移 | ✅ |
 | 1.3 | 严格自然排序 | `NaturalOrder` 比较器 + 入库 `sortKey`（数字补零），SQL 直接按自然序排序 | `core/util/NaturalOrder.kt`、`NaturalSortKey.kt` | ✅ |
 | 1.4 | 全局搜索（图库名 + 文件名 + 标签名） | 图库名 / 图片名 / 标签名三路 LIKE（转义通配符），200ms 防抖，结果分区展示 | `LibraryDao.search`、`MediaDao.search`、`TagDao.search`、`SearchViewModel` | ✅ |
 | 1.5 | 下拉刷新 + 自动监听增删 | 下拉刷新 + ContentObserver + 回前台节流扫描 + WorkManager 6h 周期扫描 | `LibraryScreen`、`LibraryViewModel`、`LibraryScanWorker` | ✅ |
@@ -29,9 +29,9 @@
 | # | 功能 | 实现 | 位置 | 状态 |
 |---|---|---|---|---|
 | 3.1 | 全局收藏 + 失效占位 + 一键清理 | 跨图库查询；源丢失 `isPresent=0` 灰占位；清理失效收藏 | `MediaDao.observeFavorites`、`FavoritesScreen` | ✅ |
-| 3.2 | 单图库随机 / 全局随机回忆 | 全局随机 60 张 + 换一批 ✅；单图库“打乱顺序”开关未做 | `RandomScreen` | 🟡 |
-| 3.3 | 星标 + 自定义标签 + 首页聚合 | 收藏 + 标签 CRUD + 标签详情/长按打标签 + 首页标签 chips + 探索页标签入口 | `feature/tags/`、`HomeScreen` | ✅ |
-| 3.4 | 时光机（那年今日） | EXIF 拍摄时间优先，文件时间兜底；按月日匹配、按年份分组 | `MemoryViewModel`、`MemoryScreen` | ✅ |
+| 3.2 | 随机 | 跟随当前图库：只在当前库的直接图片/直接子库中随机；首页随机顶层图库 | `HomeScreen`、`LibraryScreen` | ✅ |
+| 3.3 | 星标 + 自定义标签 + 首页聚合 | 图片右下角爱心直接收藏；标签 CRUD、首页标签 chips、标签详情、长按打标签 | `PhotoTile`、`feature/tags/`、`HomeScreen` | ✅ |
+| 3.4 | 那年今日 | 按 v0.4.0 需求移除（页面/入口/代码均删除） | — | ❌ 已删除 |
 
 ## 四、信息与工具
 
@@ -64,6 +64,13 @@
 |---|---|---|
 | 文件日志 + 轮转 + 崩溃落盘 | `AppLog`（1MB × 3 份，Logcat 同步） | `core/util/AppLog.kt` |
 | 应用内查看/分享/清空 | 设置 → 运行日志 | `feature/logs/LogsScreen.kt` |
+
+## 导航与入口（v0.4.0）
+
+- 底部 Tab：图库 / 收藏 / 设置（探索页已删除）。
+- 首页右上角：私密锁、标签、随机、导入压缩包、搜索。
+- 图库页右上角：随机（仅在当前库范围内）、刷新、更多。
+- 设置：私密空间、智能清理、运行日志、缩略图缓存、关于。
 
 ## 测试覆盖
 

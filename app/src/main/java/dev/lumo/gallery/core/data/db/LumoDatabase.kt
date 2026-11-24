@@ -15,7 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MediaTagEntity::class,
         ReadingProgressEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class LumoDatabase : RoomDatabase() {
@@ -31,9 +31,17 @@ abstract class LumoDatabase : RoomDatabase() {
         fun build(context: Context): LumoDatabase =
             Room.databaseBuilder(context, LumoDatabase::class.java, NAME)
                 .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .fallbackToDestructiveMigrationOnDowngrade(true)
                 .build()
+
+        /** v2 → v3：层级图库（parentId）与扫描范围（scanMode）。 */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE libraries ADD COLUMN parentId TEXT")
+                db.execSQL("ALTER TABLE libraries ADD COLUMN scanMode TEXT NOT NULL DEFAULT 'RECURSIVE'")
+            }
+        }
 
         /** v1 → v2：文件夹图库支持“子树根路径”，用于按子目录拆分图库。 */
         private val MIGRATION_1_2 = object : Migration(1, 2) {

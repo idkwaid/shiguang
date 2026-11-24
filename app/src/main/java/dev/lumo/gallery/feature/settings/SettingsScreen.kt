@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,7 +44,7 @@ import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onOpenLogs: () -> Unit = {}) {
+fun SettingsScreen(onOpenLogs: () -> Unit = {}, onOpenCleanup: () -> Unit = {}) {
     val container = LocalAppContainer.current
     val scope = rememberCoroutineScope()
     val settings by container.settingsRepository.settings.collectAsStateWithLifecycle(
@@ -118,6 +119,12 @@ fun SettingsScreen(onOpenLogs: () -> Unit = {}) {
                 }
             )
             HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("智能清理") },
+                supportingContent = { Text("重复图、相似图、大体积 GIF/HEIC") },
+                leadingContent = { Icon(Icons.Outlined.CleaningServices, contentDescription = null) },
+                modifier = Modifier.clickable { onOpenCleanup() }
+            )
             ListItem(
                 headlineContent = { Text("运行日志") },
                 supportingContent = { Text("排查问题用；可查看/分享最近日志，崩溃堆栈也会记录") },

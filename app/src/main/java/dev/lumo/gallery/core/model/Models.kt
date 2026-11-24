@@ -10,6 +10,10 @@ data class Library(
     val treeUri: String?,
     /** 文件夹图库：相对 treeUri 根的子目录路径；null 表示 treeUri 本身就是图库根 */
     val treeRootRelPath: String? = null,
+    /** 父图库 id：分组导入时镜像目录树；null = 顶层图库（首页展示） */
+    val parentId: String? = null,
+    /** 扫描模式：RECURSIVE=整体导入(递归)；DIRECT=分组节点(只扫直接子项) */
+    val scanMode: ScanMode = ScanMode.RECURSIVE,
     val archiveUri: String?,
     val archiveFormat: ArchiveFormat?,
     val displayPath: String,

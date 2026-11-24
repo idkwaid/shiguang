@@ -22,6 +22,7 @@ import dev.lumo.gallery.core.image.ThumbCache
 import dev.lumo.gallery.core.model.Library
 import dev.lumo.gallery.core.model.ArchiveFormat
 import dev.lumo.gallery.core.model.LibraryType
+import dev.lumo.gallery.core.model.ScanMode
 import dev.lumo.gallery.core.model.ScanProgress
 import dev.lumo.gallery.core.model.ScanStatus
 import dev.lumo.gallery.core.model.SortMode
@@ -37,11 +38,13 @@ import java.util.UUID
 
 sealed interface GroupedImportResult {
     data class Created(
+        val root: Library,
         val libraries: List<Library>,
         val folderLibraries: Int,
         val archiveLibraries: Int
     ) : GroupedImportResult
 
+    data class AlreadyImported(val library: Library) : GroupedImportResult
     data object Empty : GroupedImportResult
     data class Failed(val message: String) : GroupedImportResult
 }
@@ -68,10 +71,21 @@ class LibraryRepository(
 ) {
 
     fun observeVisible(): Flow<List<Library>> =
-        db.libraryDao().observeVisible().map { list -> list.map(LibraryEntity::toModel) }
+        db.libraryDao().observeVisibleRoots().map { list -> list.map(LibraryEntity::toModel) }
 
     fun observeAll(): Flow<List<Library>> =
         db.libraryDao().observeAll().map { list -> list.map(LibraryEntity::toModel) }
+
+    fun observeChildren(parentId: String): Flow<List<Library>> =
+        db.libraryDao().observeChildren(parentId).map { list -> list.map(LibraryEntity::toModel) }
+
+    suspend fun getChildren(parentId: String): List<Library> =
+        db.libraryDao().getChildren(parentId).map(LibraryEntity::toModel)
+
+    fun observeChildCounts(): Flow<Map<String, Int>> =
+        db.libraryDao().observeChildCounts().map { counts ->
+            counts.associate { it.parentId to it.count }
+        }
 
     fun observePrivate(): Flow<List<Library>> =
         db.libraryDao().observePrivate().map { list -> list.map(LibraryEntity::toModel) }
@@ -79,28 +93,34 @@ class LibraryRepository(
     fun observeById(id: String): Flow<Library?> =
         db.libraryDao().observeById(id).map { it?.toModel() }
 
+    suspend fun get(id: String): Library? = db.libraryDao().getById(id)?.toModel()
+
     fun observeSearch(query: String): Flow<List<Library>> =
         db.libraryDao().search(MediaRepository.escapeLike(query)).map { list -> list.map(LibraryEntity::toModel) }
-
-    suspend fun get(id: String): Library? = db.libraryDao().getById(id)?.toModel()
 
     fun scanProgress(libraryId: String): Flow<ScanProgress?> = progressBus.progressOf(libraryId)
 
     fun allScanProgress(): Flow<Map<String, ScanProgress>> = progressBus.states
 
     /**
-     * 分组导入：选中目录下“每个直接含图片的子目录”和“每个压缩包”各建一个图库。
-     * 只建中继目录没有意义，因此跳过不含直接图片的目录。
+     * 分组导入：把选中目录**按文件树镜像成层级图库**。
+     * 例如选中 /ben，内部有 /ben/xxx/ 时会创建顶层图库 ben，
+     * 打开 ben 后能看到子图库 xxx；每个节点只扫描自己的直接图片，不把子目录图片摊平到父级。
      */
     suspend fun addFolderGrouped(
         treeUri: Uri,
         onProgress: (String) -> Unit = {}
     ): GroupedImportResult = withContext(Dispatchers.IO) {
-        // 必须无条件持久化：选完文件夹时拿的是临时授权，checkUriPermission 会误报为已授权
         permissions.takePersistable(treeUri, write = true)
         if (!permissions.hasReadPermission(treeUri)) {
             AppLog.e("Import", "分组导入拿不到持久化读权限: $treeUri")
             return@withContext GroupedImportResult.Failed("无法获得该文件夹的读取权限")
+        }
+        val treeKey = treeUri.toString()
+        // 已有该文件夹的顶层图库（整体或分组）→ 明确提示“已导入”，而不是扫描不到
+        db.libraryDao().findAnyTopFolderByUri(treeKey)?.let {
+            AppLog.i("Import", "分组导入重复: $treeUri")
+            return@withContext GroupedImportResult.AlreadyImported(it.toModel())
         }
         AppLog.i("Import", "开始分组导入: $treeUri")
         val rootName = queryTreeDisplayName(treeUri) ?: "文件夹"
@@ -108,39 +128,63 @@ class LibraryRepository(
         val summary = try {
             walker.summarize(treeUri) { dirs -> onProgress("已扫描 $dirs 个目录…") }
         } catch (e: Exception) {
+            AppLog.e("Import", "分组导入目录读取失败", e)
             return@withContext GroupedImportResult.Failed("目录读取失败：${e.message}")
         }
 
-        val created = ArrayList<Library>()
-        var folderCount = 0
-        var archiveCount = 0
-        var stamp = System.currentTimeMillis()
-        val treeKey = treeUri.toString()
+        val hasContent = summary.rootHasDirectImages ||
+            summary.dirsWithDirectImages.isNotEmpty() ||
+            summary.archives.isNotEmpty()
+        if (!hasContent) return@withContext GroupedImportResult.Empty
 
-        if (summary.rootHasDirectImages && db.libraryDao().findFolderRootByUri(treeKey) == null) {
-            created.add(
-                newFolderLibrary(
-                    treeUri = treeKey,
-                    relPath = null,
-                    name = rootName,
-                    createdAt = stamp++
-                )
-            )
-            folderCount++
+        // 收集“需要建节点”的目录：含直接图片的目录 + 所有祖先目录（镜像层级）
+        val relevant = LinkedHashSet<String>()
+        fun addAncestors(relPath: String) {
+            var path = relPath
+            while (path.isNotEmpty()) {
+                relevant.add(path)
+                path = path.substringBeforeLast('/', "")
+            }
+        }
+        summary.dirsWithDirectImages.forEach { addAncestors(it) }
+        summary.archives.forEach { archive ->
+            val parent = archive.relPath.substringBeforeLast('/', "")
+            if (parent.isNotEmpty()) addAncestors(parent)
         }
 
-        for (relPath in summary.dirsWithDirectImages) {
-            if (db.libraryDao().findFolderByRelPath(treeKey, relPath) == null) {
-                created.add(
-                    newFolderLibrary(
-                        treeUri = treeKey,
-                        relPath = relPath,
-                        name = relPath,
-                        createdAt = stamp++
-                    )
-                )
-                folderCount++
-            }
+        val created = ArrayList<Library>()
+        val idByRelPath = HashMap<String, String>()
+        var stamp = System.currentTimeMillis()
+        var folderCount = 1
+        var archiveCount = 0
+
+        val root = newFolderLibrary(
+            treeUri = treeKey,
+            relPath = null,
+            name = rootName,
+            parentId = null,
+            scanMode = ScanMode.DIRECT,
+            createdAt = stamp++
+        )
+        created.add(root)
+        idByRelPath[""] = root.id
+
+        val orderedDirs = relevant.sortedBy { path -> path.count { it == '/' } }
+        for (relPath in orderedDirs) {
+            if (idByRelPath.containsKey(relPath)) continue
+            val parentRel = relPath.substringBeforeLast('/', "")
+            val parentId = idByRelPath[parentRel] ?: root.id
+            val node = newFolderLibrary(
+                treeUri = treeKey,
+                relPath = relPath,
+                name = relPath.substringAfterLast('/'),
+                parentId = parentId,
+                scanMode = ScanMode.DIRECT,
+                createdAt = stamp++
+            )
+            created.add(node)
+            idByRelPath[relPath] = node.id
+            folderCount++
         }
 
         for (child in summary.archives) {
@@ -149,13 +193,17 @@ class LibraryRepository(
                 ?: continue
             val archiveUri = child.docUri.toString()
             if (db.libraryDao().findArchiveByUri(archiveUri) != null) continue
+            val parentRel = child.relPath.substringBeforeLast('/', "")
+            val parentId = idByRelPath[parentRel] ?: root.id
             created.add(
                 Library(
                     id = UUID.randomUUID().toString(),
                     type = LibraryType.ARCHIVE,
                     name = child.name,
                     treeUri = treeKey,
-                    treeRootRelPath = null,
+                    treeRootRelPath = child.relPath,
+                    parentId = parentId,
+                    scanMode = ScanMode.RECURSIVE,
                     archiveUri = archiveUri,
                     archiveFormat = format,
                     displayPath = child.relPath,
@@ -176,20 +224,18 @@ class LibraryRepository(
         created.forEach { db.libraryDao().upsert(it.toEntity()) }
         AppLog.i(
             "Import",
-            "分组导入完成: 目录=${summary.dirsWithDirectImages.size} 压缩包=${summary.archives.size} " +
-                "新建=${created.size}（文件夹 $folderCount / 压缩包 $archiveCount）"
+            "分组导入完成: 目录节点=${summary.dirsWithDirectImages.size} 压缩包=${summary.archives.size} " +
+                "新建=${created.size}（文件夹 $folderCount / 压缩包 $archiveCount）root=${root.name}"
         )
-        if (created.isEmpty()) {
-            GroupedImportResult.Empty
-        } else {
-            GroupedImportResult.Created(created, folderCount, archiveCount)
-        }
+        GroupedImportResult.Created(root, created, folderCount, archiveCount)
     }
 
     private fun newFolderLibrary(
         treeUri: String,
         relPath: String?,
         name: String,
+        parentId: String?,
+        scanMode: ScanMode,
         createdAt: Long
     ): Library = Library(
         id = UUID.randomUUID().toString(),
@@ -197,6 +243,8 @@ class LibraryRepository(
         name = name,
         treeUri = treeUri,
         treeRootRelPath = relPath,
+        parentId = parentId,
+        scanMode = scanMode,
         archiveUri = null,
         archiveFormat = null,
         displayPath = relPath ?: name,
@@ -211,10 +259,16 @@ class LibraryRepository(
         lastError = null
     )
 
-    /** 分组导入后按顺序后台扫描，避免同时压满 IO。 */
+    /** 分组导入后按“先深后浅”顺序后台扫描，子库先出封面，父级容器再回填封面。 */
     fun startBatchScan(libraryIds: List<String>, reason: String = "首次导入") {
         appScope.launch(Dispatchers.IO) {
-            libraryIds.forEach { scan(it, reason) }
+            val ordered = libraryIds
+                .mapNotNull { id ->
+                    db.libraryDao().getById(id)?.let { entity -> id to (entity.treeRootRelPath?.count { it == '/' } ?: 0) }
+                }
+                .sortedByDescending { it.second }
+                .map { it.first }
+            ordered.forEach { scan(it, reason) }
         }
     }
 
@@ -228,7 +282,8 @@ class LibraryRepository(
             return AddLibraryResult.Failed("无法获得该文件夹的读取权限")
         }
         AppLog.i("Import", "整体导入: $treeUri")
-        db.libraryDao().findFolderByUri(treeUri.toString())?.let {
+        db.libraryDao().findAnyTopFolderByUri(treeUri.toString())?.let {
+            AppLog.i("Import", "整体导入重复: $treeUri")
             return AddLibraryResult.Duplicate(it.toModel())
         }
         val name = queryTreeDisplayName(treeUri) ?: treeUri.lastPathSegment?.substringAfterLast('/')
@@ -238,6 +293,9 @@ class LibraryRepository(
             type = LibraryType.FOLDER,
             name = name,
             treeUri = treeUri.toString(),
+            treeRootRelPath = null,
+            parentId = null,
+            scanMode = ScanMode.RECURSIVE,
             archiveUri = null,
             archiveFormat = null,
             displayPath = name,
@@ -349,8 +407,26 @@ class LibraryRepository(
         AppLog.i("Scan", "开始扫描 library=$libraryId reason=$reason")
         val outcome = scanner.scan(libraryId, reason)
         AppLog.i("Scan", "扫描结束 library=$libraryId reason=$reason outcome=$outcome")
-        if (outcome is ScanOutcome.Success) enricher.enqueue(libraryId)
+        if (outcome is ScanOutcome.Success) {
+            enricher.enqueue(libraryId)
+            propagateCoverToAncestors(libraryId)
+        }
         return outcome
+    }
+
+    /** 子图库扫描出封面后，向上回填“只有子库”的容器节点封面。 */
+    private suspend fun propagateCoverToAncestors(startId: String) {
+        var currentId = startId
+        repeat(64) {
+            val child = db.libraryDao().getById(currentId) ?: return
+            val parentId = child.parentId ?: return
+            val parent = db.libraryDao().getById(parentId) ?: return
+            val cover = child.coverItemId ?: db.mediaDao().firstPresent(child.id)?.id
+            if (parent.coverItemId == null && cover != null) {
+                db.libraryDao().updateCover(parentId, cover)
+            }
+            currentId = parentId
+        }
     }
 
     /**
@@ -424,7 +500,11 @@ class LibraryRepository(
     }
 
     suspend fun setPrivate(libraryId: String, isPrivate: Boolean) {
+        // 级联到子图库，保证进入子图库时同样走门禁
         db.libraryDao().setPrivate(libraryId, isPrivate)
+        db.libraryDao().getChildren(libraryId).forEach { child ->
+            setPrivate(child.id, isPrivate)
+        }
     }
 
     suspend fun setSortMode(libraryId: String, sortMode: SortMode) {
@@ -432,16 +512,34 @@ class LibraryRepository(
     }
 
     suspend fun delete(libraryId: String) {
-        enricher.cancel(libraryId)
+        val subtree = collectSubtreeIds(libraryId)
+        subtree.forEach { enricher.cancel(it) }
         db.withTransaction {
-            db.mediaDao().deleteByLibrary(libraryId)
-            db.progressDao().clear(libraryId)
-            db.libraryDao().delete(libraryId)
+            subtree.forEach { id ->
+                db.mediaDao().deleteByLibrary(id)
+                db.progressDao().clear(id)
+                db.libraryDao().delete(id)
+            }
         }
-        thumbCache.deleteLibrary(libraryId)
-        archiveSessions.close(libraryId)
-        archiveStaging.deleteLibrary(libraryId)
-        archiveEntries.deleteLibrary(libraryId)
-        progressBus.clear(libraryId)
+        subtree.forEach { id ->
+            thumbCache.deleteLibrary(id)
+            archiveSessions.close(id)
+            archiveStaging.deleteLibrary(id)
+            archiveEntries.deleteLibrary(id)
+            progressBus.clear(id)
+        }
+    }
+
+    /** 自身 + 所有后代图库 id（删除/私密级联用）。 */
+    private suspend fun collectSubtreeIds(rootId: String): List<String> {
+        val result = ArrayList<String>()
+        val queue = ArrayDeque<String>()
+        queue.add(rootId)
+        while (queue.isNotEmpty()) {
+            val id = queue.removeFirst()
+            result.add(id)
+            db.libraryDao().getChildren(id).forEach { queue.add(it.id) }
+        }
+        return result
     }
 }

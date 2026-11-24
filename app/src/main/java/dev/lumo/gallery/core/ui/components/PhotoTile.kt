@@ -2,20 +2,27 @@ package dev.lumo.gallery.core.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +33,7 @@ import coil3.compose.AsyncImage
 import dev.lumo.gallery.core.model.MediaItem
 import dev.lumo.gallery.core.ui.LocalAppContainer
 import java.io.File
+import kotlinx.coroutines.launch
 
 /** 网格缩略图：16:10 视觉重量、圆角、收藏角标、失效占位。 */
 @Composable
@@ -42,6 +50,8 @@ fun PhotoTile(
         else container.thumbCache.existing(item.libraryId, item.id, item.lastModified)
     }
     val ratio = remember(item.width, item.height, item.orientation) { item.displayAspectRatio() }
+    var localFavorite by remember(item.id, item.isFavorite) { mutableStateOf(item.isFavorite) }
+    val scope = rememberCoroutineScope()
 
     Box(
         modifier = modifier
@@ -81,16 +91,30 @@ fun PhotoTile(
             )
         }
 
-        if (showFavoriteBadge && item.isFavorite) {
-            Icon(
-                imageVector = Icons.Outlined.Favorite,
-                contentDescription = "已收藏",
-                tint = Color(0xFFE45C7B),
+        if (showFavoriteBadge) {
+            Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(6.dp)
-                    .size(16.dp)
-            )
+                    .align(Alignment.BottomEnd)
+                    .padding(4.dp)
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x4D000000))
+                    .clickable {
+                        val next = !localFavorite
+                        localFavorite = next
+                        scope.launch {
+                            container.mediaRepository.setFavorite(item.id, next)
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (localFavorite) Icons.Outlined.Favorite else Icons.Outlined.FavoriteBorder,
+                    contentDescription = if (localFavorite) "取消收藏" else "收藏",
+                    tint = if (localFavorite) Color(0xFFE45C7B) else Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }

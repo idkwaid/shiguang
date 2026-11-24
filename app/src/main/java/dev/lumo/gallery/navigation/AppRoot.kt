@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Settings
@@ -35,9 +34,6 @@ import dev.lumo.gallery.LumoApp
 import dev.lumo.gallery.core.ui.LocalAppContainer
 import dev.lumo.gallery.feature.cleanup.CleanupScreen
 import dev.lumo.gallery.feature.editor.EditorScreen
-import dev.lumo.gallery.feature.explore.ExploreScreen
-import dev.lumo.gallery.feature.memory.MemoryScreen
-import dev.lumo.gallery.feature.memory.RandomScreen
 import dev.lumo.gallery.feature.tags.TagDetailScreen
 import dev.lumo.gallery.feature.tags.TagsScreen
 import dev.lumo.gallery.feature.favorites.FavoritesScreen
@@ -58,7 +54,6 @@ private data class Tab(
 private val TABS = listOf(
     Tab(Routes.HOME, "图库", Icons.Outlined.PhotoLibrary),
     Tab(Routes.FAVORITES, "收藏", Icons.Outlined.FavoriteBorder),
-    Tab(Routes.EXPLORE, "探索", Icons.Outlined.AutoAwesome),
     Tab(Routes.SETTINGS, "设置", Icons.Outlined.Settings)
 )
 
@@ -136,14 +131,6 @@ fun AppRoot() {
                         }
                     )
                 }
-                composable(Routes.EXPLORE) {
-                    ExploreScreen(
-                        onOpenTags = { navController.navigate(Routes.TAGS) },
-                        onOpenMemory = { navController.navigate(Routes.MEMORY) },
-                        onOpenRandom = { navController.navigate(Routes.RANDOM) },
-                        onOpenCleanup = { navController.navigate(Routes.CLEANUP) }
-                    )
-                }
                 composable(Routes.TAGS) {
                     TagsScreen(
                         onBack = { navController.popBackStack() },
@@ -162,14 +149,6 @@ fun AppRoot() {
                     TagDetailScreen(
                         tagId = tagId,
                         tagName = tagName,
-                        onBack = { navController.popBackStack() },
-                        onOpenViewer = { libraryId, itemId ->
-                            navController.navigate(Routes.viewer(libraryId, itemId))
-                        }
-                    )
-                }
-                composable(Routes.MEMORY) {
-                    MemoryScreen(
                         onBack = { navController.popBackStack() },
                         onOpenViewer = { libraryId, itemId ->
                             navController.navigate(Routes.viewer(libraryId, itemId))
@@ -198,16 +177,11 @@ fun AppRoot() {
                         onBack = { navController.popBackStack() }
                     )
                 }
-                composable(Routes.RANDOM) {
-                    RandomScreen(
-                        onBack = { navController.popBackStack() },
-                        onOpenViewer = { libraryId, itemId ->
-                            navController.navigate(Routes.viewer(libraryId, itemId))
-                        }
-                    )
-                }
                 composable(Routes.SETTINGS) {
-                    SettingsScreen(onOpenLogs = { navController.navigate(Routes.LOGS) })
+                    SettingsScreen(
+                        onOpenLogs = { navController.navigate(Routes.LOGS) },
+                        onOpenCleanup = { navController.navigate(Routes.CLEANUP) }
+                    )
                 }
                 composable(Routes.LOGS) {
                     LogsScreen(onBack = { navController.popBackStack() })
@@ -236,7 +210,8 @@ fun AppRoot() {
                         onOpenPrivate = { navController.navigate(Routes.PRIVATE) },
                         onOpenEditor = { lib, item ->
                             navController.navigate(Routes.editor(lib, item))
-                        }
+                        },
+                        onOpenLibrary = { childId -> navController.navigate(Routes.library(childId)) }
                     )
                 }
                 composable(

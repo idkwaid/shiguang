@@ -9,6 +9,9 @@ enum class ArchiveFormat { ZIP, RAR, SEVEN_Z }
 /** 图库内排序方式。 */
 enum class SortMode { NATURAL, DATE_DESC, NAME_ASC }
 
+/** 文件夹图库的扫描范围。 */
+enum class ScanMode { RECURSIVE, DIRECT }
+
 /** 最近一次扫描结果，用于首页与图库页的状态提示。 */
 enum class ScanStatus {
     NEVER,

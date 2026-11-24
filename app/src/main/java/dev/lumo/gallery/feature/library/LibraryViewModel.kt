@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -39,6 +42,18 @@ class LibraryViewModel(
 
     val scanProgress: StateFlow<ScanProgress?> = libraries.scanProgress(libraryId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val children: StateFlow<List<Library>> = libraries.observeChildren(libraryId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val childCovers: StateFlow<Map<String, MediaItem>> = libraries.observeChildren(libraryId)
+        .map { list -> list.mapNotNull { it.coverItemId } }
+        .distinctUntilChanged()
+        .mapLatest { ids ->
+            if (ids.isEmpty()) emptyMap()
+            else media.itemsByIds(ids).associateBy { it.id }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     val continueInfo: StateFlow<ContinueInfo?> = combine(
         items,
