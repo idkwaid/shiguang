@@ -138,7 +138,6 @@ fun ViewerScreen(
             pageCount = { items.size }
         )
         var pageZoom by remember { mutableFloatStateOf(1f) }
-        var comparing by remember { mutableStateOf(false) }
         var sliderVisible by remember { mutableStateOf(false) }
         var pendingPage by remember { mutableStateOf<Int?>(null) }
 
@@ -161,7 +160,7 @@ fun ViewerScreen(
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
-            userScrollEnabled = pageZoom <= 1.01f && !comparing,
+            userScrollEnabled = pageZoom <= 1.01f,
             key = { page -> items[page].id }
         ) { page ->
             val item = items[page]
@@ -183,8 +182,7 @@ fun ViewerScreen(
                     contentDescription = item.displayName,
                     resetKey = item.id,
                     onTap = { sliderVisible = !sliderVisible },
-                    onZoomChanged = { pageZoom = it },
-                    onCompareChanged = { comparing = it }
+                    onZoomChanged = { pageZoom = it }
                 )
 
                 PreviewState.Loading -> Column(

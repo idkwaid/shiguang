@@ -9,6 +9,13 @@ enum class ArchiveFormat { ZIP, RAR, SEVEN_Z }
 /** 图库内排序方式。 */
 enum class SortMode { NATURAL, DATE_DESC, NAME_ASC }
 
+/** 缩略图清晰度：越低生成越快、占用越小。 */
+enum class ThumbnailQuality(val maxSize: Int, val jpegQuality: Int, val label: String) {
+    LOW(256, 62, "流畅（低清）"),
+    MEDIUM(384, 74, "均衡（中清）"),
+    HIGH(512, 85, "清晰（高清）")
+}
+
 /** 文件夹图库的扫描范围。 */
 enum class ScanMode { RECURSIVE, DIRECT }
 

@@ -18,6 +18,7 @@ fun LibraryEntity.toModel(): Library = Library(
     parentId = parentId,
     scanMode = runCatching { dev.lumo.gallery.core.model.ScanMode.valueOf(scanMode) }
         .getOrDefault(dev.lumo.gallery.core.model.ScanMode.RECURSIVE),
+    isFavorite = isFavorite,
     archiveUri = archiveUri,
     archiveFormat = archiveFormat?.let { runCatching { ArchiveFormat.valueOf(it) }.getOrNull() },
     displayPath = displayPath,
@@ -40,6 +41,7 @@ fun Library.toEntity(): LibraryEntity = LibraryEntity(
     treeRootRelPath = treeRootRelPath,
     parentId = parentId,
     scanMode = scanMode.name,
+    isFavorite = isFavorite,
     archiveUri = archiveUri,
     archiveFormat = archiveFormat?.name,
     displayPath = displayPath,

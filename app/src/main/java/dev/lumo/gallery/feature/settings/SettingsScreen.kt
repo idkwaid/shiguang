@@ -1,6 +1,8 @@
 package dev.lumo.gallery.feature.settings
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -12,6 +14,7 @@ import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -36,6 +39,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.lumo.gallery.BuildConfig
+import dev.lumo.gallery.core.model.ThumbnailQuality
 import dev.lumo.gallery.core.security.PinHasher
 import dev.lumo.gallery.core.ui.LocalAppContainer
 import kotlinx.coroutines.Dispatchers
@@ -118,6 +122,33 @@ fun SettingsScreen(onOpenLogs: () -> Unit = {}, onOpenCleanup: () -> Unit = {}) 
                     }) { Text("清空") }
                 }
             )
+            HorizontalDivider()
+            ListItem(
+                headlineContent = { Text("缩略图清晰度") },
+                supportingContent = {
+                    Text("${settings.thumbnailQuality.label} · 越低加载越快，修改后会重新生成缩略图")
+                }
+            )
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ThumbnailQuality.entries.forEach { quality ->
+                    FilterChip(
+                        selected = settings.thumbnailQuality == quality,
+                        onClick = {
+                            if (settings.thumbnailQuality != quality) {
+                                scope.launch {
+                                    container.settingsRepository.setThumbnailQuality(quality)
+                                    withContext(Dispatchers.IO) { container.thumbCache.clearAll() }
+                                    container.libraryRepository.regenerateAllThumbnails()
+                                }
+                            }
+                        },
+                        label = { Text(quality.label) }
+                    )
+                }
+            }
             HorizontalDivider()
             ListItem(
                 headlineContent = { Text("智能清理") },

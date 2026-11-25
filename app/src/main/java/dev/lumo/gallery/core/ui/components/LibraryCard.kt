@@ -1,6 +1,7 @@
 package dev.lumo.gallery.core.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,8 +15,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Lock
@@ -30,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,7 +45,7 @@ import dev.lumo.gallery.core.model.ScanProgress
 import dev.lumo.gallery.core.model.ScanStatus
 import dev.lumo.gallery.core.ui.LocalAppContainer
 
-/** 首页图库卡片：封面 + 名称 + 数量 + 状态徽标。 */
+/** 首页图库卡片：封面 + 名称 + 右上角照片数 + 右下角收藏 + 状态徽标。 */
 @Composable
 fun LibraryCard(
     library: Library,
@@ -48,6 +53,7 @@ fun LibraryCard(
     scanning: ScanProgress?,
     modifier: Modifier = Modifier,
     childCount: Int = 0,
+    onFavoriteToggle: () -> Unit = {},
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null
 ) {
@@ -79,20 +85,16 @@ fun LibraryCard(
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    Column(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            imageVector = if (library.isArchive) Icons.Outlined.FolderZip else Icons.Outlined.Image,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
+                    Icon(
+                        imageVector = if (library.isArchive) Icons.Outlined.FolderZip else Icons.Outlined.Image,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(28.dp)
+                    )
                 }
 
-                // 底部信息渐变
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
@@ -100,7 +102,7 @@ fun LibraryCard(
                         .height(64.dp)
                         .background(
                             Brush.verticalGradient(
-                                listOf(androidx.compose.ui.graphics.Color.Transparent, androidx.compose.ui.graphics.Color(0x66000000))
+                                listOf(Color.Transparent, Color(0x66000000))
                             )
                         )
                 )
@@ -108,7 +110,7 @@ fun LibraryCard(
                 Text(
                     text = library.name,
                     style = MaterialTheme.typography.titleSmall,
-                    color = androidx.compose.ui.graphics.Color.White,
+                    color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
@@ -116,19 +118,22 @@ fun LibraryCard(
                         .padding(horizontal = 10.dp, vertical = 8.dp)
                 )
 
-                if (library.isPrivate) {
-                    Icon(
-                        imageVector = Icons.Outlined.Lock,
-                        contentDescription = "私密图库",
-                        tint = androidx.compose.ui.graphics.Color.White,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                            .size(16.dp)
-                    )
-                }
+                LibraryCountBadge(
+                    count = library.itemCount,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                )
 
                 StatusBadge(library.scanStatus, Modifier.align(Alignment.TopStart))
+
+                LibraryFavoriteButton(
+                    favorite = library.isFavorite,
+                    onToggle = onFavoriteToggle,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                )
             }
 
             Row(
@@ -138,18 +143,29 @@ fun LibraryCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = when {
-                        library.itemCount == 0 && childCount > 0 -> "$childCount 个子图库"
-                        childCount > 0 -> "${library.itemCount} 张 · $childCount 个子图库"
-                        else -> "${library.itemCount} 张"
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (library.isArchive) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (library.isPrivate) {
+                        Icon(
+                            Icons.Outlined.Lock,
+                            contentDescription = "私密图库",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                    }
                     Text(
-                        text = library.archiveFormat?.name ?: "压缩包",
+                        text = when {
+                            library.isPrivate -> "私密"
+                            library.isArchive -> library.archiveFormat?.name ?: "压缩包"
+                            else -> "文件夹"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (childCount > 0) {
+                    Text(
+                        text = "$childCount 个子图库",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -177,12 +193,17 @@ fun LibraryCard(
     }
 }
 
-/** 图库页里的子图库卡片（层级浏览用）。 */
+/**
+ * 图库网格里的图库卡片（首页/子图库/收藏图库共用）：
+ * 封面右上角照片数、右下角收藏，点卡片进入图库。
+ */
 @Composable
-fun ChildLibraryCard(
+fun LibraryTile(
     library: Library,
     cover: MediaItem?,
     modifier: Modifier = Modifier,
+    childCount: Int = 0,
+    onFavoriteToggle: () -> Unit = {},
     onClick: () -> Unit
 ) {
     val container = LocalAppContainer.current
@@ -191,15 +212,15 @@ fun ChildLibraryCard(
     }
     Column(
         modifier = modifier
-            .width(132.dp)
+            .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .combinedClickable(onClick = onClick)
-            .padding(bottom = 2.dp)
+            .clickable(onClick = onClick)
+            .padding(bottom = 4.dp)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1.15f)
+                .aspectRatio(1.12f)
                 .clip(RoundedCornerShape(12.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
@@ -217,21 +238,32 @@ fun ChildLibraryCard(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .size(26.dp)
+                        .size(28.dp)
                 )
             }
-            Surface(
-                color = androidx.compose.ui.graphics.Color(0x99000000),
-                shape = RoundedCornerShape(8.dp),
+
+            LibraryCountBadge(
+                count = library.itemCount,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+            )
+            LibraryFavoriteButton(
+                favorite = library.isFavorite,
+                onToggle = onFavoriteToggle,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(6.dp)
-            ) {
-                Text(
-                    text = "${library.itemCount}",
-                    color = androidx.compose.ui.graphics.Color.White,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    .padding(4.dp)
+            )
+            if (library.isPrivate) {
+                Icon(
+                    Icons.Outlined.Lock,
+                    contentDescription = "私密图库",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .size(14.dp)
                 )
             }
         }
@@ -241,6 +273,55 @@ fun ChildLibraryCard(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 5.dp, start = 2.dp, end = 2.dp)
+        )
+        Text(
+            text = if (childCount > 0) {
+                "${library.itemCount} 张 · $childCount 个子图库"
+            } else {
+                "${library.itemCount} 张"
+            },
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 2.dp, end = 2.dp)
+        )
+    }
+}
+
+@Composable
+private fun LibraryCountBadge(count: Int, modifier: Modifier = Modifier) {
+    Surface(
+        color = Color(0xB3000000),
+        shape = RoundedCornerShape(8.dp),
+        modifier = modifier
+    ) {
+        Text(
+            text = "$count",
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+    }
+}
+
+@Composable
+private fun LibraryFavoriteButton(
+    favorite: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .size(34.dp)
+            .clip(CircleShape)
+            .background(Color(0x4D000000))
+            .clickable(onClick = onToggle),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = if (favorite) Icons.Outlined.Favorite else Icons.Outlined.FavoriteBorder,
+            contentDescription = if (favorite) "取消收藏图库" else "收藏图库",
+            tint = if (favorite) Color(0xFFE45C7B) else Color.White,
+            modifier = Modifier.size(20.dp)
         )
     }
 }
@@ -258,24 +339,21 @@ private fun StatusBadge(status: ScanStatus, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .padding(8.dp)
-            .background(
-                androidx.compose.ui.graphics.Color(0xCC000000),
-                RoundedCornerShape(10.dp)
-            )
+            .background(Color(0xCC000000), RoundedCornerShape(10.dp))
             .padding(horizontal = 6.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = androidx.compose.ui.graphics.Color.White,
+            tint = Color.White,
             modifier = Modifier.size(11.dp)
         )
         Spacer(Modifier.width(3.dp))
         Text(
             text = text,
             style = MaterialTheme.typography.labelSmall,
-            color = androidx.compose.ui.graphics.Color.White
+            color = Color.White
         )
     }
 }

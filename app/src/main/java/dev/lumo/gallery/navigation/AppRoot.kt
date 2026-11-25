@@ -128,7 +128,8 @@ fun AppRoot() {
                     FavoritesScreen(
                         onOpenViewer = { libraryId, itemId ->
                             navController.navigate(Routes.viewer(libraryId, itemId))
-                        }
+                        },
+                        onOpenLibrary = { id -> navController.navigate(Routes.library(id)) }
                     )
                 }
                 composable(Routes.TAGS) {

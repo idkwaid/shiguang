@@ -150,6 +150,12 @@ class HomeViewModel(
         viewModelScope.launch { _messages.emit("正在重新扫描…") }
     }
 
+    fun toggleLibraryFavorite(library: Library) {
+        viewModelScope.launch {
+            libraries.setLibraryFavorite(library.id, !library.isFavorite)
+        }
+    }
+
     fun setPrivate(library: Library, enable: Boolean) {
         viewModelScope.launch {
             if (enable && !hasPin.value) {

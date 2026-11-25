@@ -1,6 +1,5 @@
 package dev.lumo.gallery.core.ui.components
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -25,7 +24,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
@@ -35,8 +33,8 @@ import java.io.File
  * 全屏查看里的缩放容器：
  * - 双指捏合 1x–6x、拖拽查看局部；
  * - 双击在 1x / 2.5x 间切换；
- * - 双指长按 350ms 临时回到 1x（对比原图），松手恢复；
- * - 1x 时不消费横向手势，交给 Pager 翻页。
+ * - 1x 时不消费横向手势，交给 Pager 翻页；
+ * - 不再做“双指长按回原图”，避免缩放过程中被误触重置。
  */
 @Composable
 fun ZoomablePhoto(
@@ -45,12 +43,10 @@ fun ZoomablePhoto(
     resetKey: Any,
     modifier: Modifier = Modifier,
     onTap: () -> Unit,
-    onZoomChanged: (Float) -> Unit,
-    onCompareChanged: (Boolean) -> Unit = {}
+    onZoomChanged: (Float) -> Unit
 ) {
     var scale by remember(resetKey) { mutableFloatStateOf(1f) }
     var offset by remember(resetKey) { mutableStateOf(Offset.Zero) }
-    var comparing by remember(resetKey) { mutableStateOf(false) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
     fun clamp(value: Offset, s: Float): Offset {
@@ -84,46 +80,28 @@ fun ZoomablePhoto(
             .pointerInput(resetKey) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
-                    var twoFingerSince = 0L
                     do {
                         val event = awaitPointerEvent()
                         val pressed = event.changes.count { it.pressed }
                         if (pressed >= 2) {
-                            if (twoFingerSince == 0L) twoFingerSince = event.changes.first().uptimeMillis
-                            if (!comparing && scale > 1.01f &&
-                                event.changes.first().uptimeMillis - twoFingerSince >= 350L
-                            ) {
-                                comparing = true
-                                onCompareChanged(true)
-                            }
                             val zoom = event.calculateZoom()
                             val pan = event.calculatePan()
-                            if (!comparing && (zoom != 1f || pan != Offset.Zero)) {
+                            if (zoom != 1f || pan != Offset.Zero) {
+                                // 注意：这里不再触发任何“长按对比”，缩放中手指移动只更新缩放/位移
                                 val next = (scale * zoom).coerceIn(1f, 6f)
                                 scale = next
                                 offset = if (next <= 1.01f) Offset.Zero else clamp(offset + pan, next)
                                 onZoomChanged(next)
                                 event.changes.forEach { it.consume() }
                             }
-                        } else {
-                            twoFingerSince = 0L
-                            if (comparing) {
-                                comparing = false
-                                onCompareChanged(false)
-                            }
-                            if (scale > 1.01f) {
-                                val pan = event.calculatePan()
-                                if (pan != Offset.Zero) {
-                                    offset = clamp(offset + pan, scale)
-                                    event.changes.forEach { it.consume() }
-                                }
+                        } else if (scale > 1.01f) {
+                            val pan = event.calculatePan()
+                            if (pan != Offset.Zero) {
+                                offset = clamp(offset + pan, scale)
+                                event.changes.forEach { it.consume() }
                             }
                         }
                     } while (event.changes.any { it.pressed })
-                    if (comparing) {
-                        comparing = false
-                        onCompareChanged(false)
-                    }
                 }
             }
     ) {
@@ -135,11 +113,10 @@ fun ZoomablePhoto(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        val effective = if (comparing) 1f else scale
-                        scaleX = effective
-                        scaleY = effective
-                        translationX = if (comparing) 0f else offset.x
-                        translationY = if (comparing) 0f else offset.y
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = offset.x
+                        translationY = offset.y
                     }
             )
         } else {

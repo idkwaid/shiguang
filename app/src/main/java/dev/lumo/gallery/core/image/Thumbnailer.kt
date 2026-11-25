@@ -39,6 +39,7 @@ class Thumbnailer(
         item: MediaItem,
         provider: MediaStreamProvider,
         maxSize: Int = 480,
+        jpegQuality: Int = 82,
         kind: String = "thumbs"
     ): ThumbnailResult? = withContext(io) {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -70,7 +71,7 @@ class Thumbnailer(
         target.parentFile?.mkdirs()
         val ok = runCatching {
             FileOutputStream(target).use { out ->
-                rotated.compress(Bitmap.CompressFormat.JPEG, 82, out)
+                rotated.compress(Bitmap.CompressFormat.JPEG, jpegQuality, out)
             }
         }.isSuccess
         rotated.recycle()

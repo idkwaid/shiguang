@@ -77,6 +77,12 @@ interface LibraryDao {
     @Query("UPDATE libraries SET isPrivate = :isPrivate WHERE id = :id")
     suspend fun setPrivate(id: String, isPrivate: Boolean)
 
+    @Query("UPDATE libraries SET isFavorite = :favorite WHERE id = :id")
+    suspend fun setFavorite(id: String, favorite: Boolean)
+
+    @Query("SELECT * FROM libraries WHERE isFavorite = 1 AND isPrivate = 0 ORDER BY createdAt DESC")
+    fun observeFavoriteLibraries(): Flow<List<LibraryEntity>>
+
     @Query("UPDATE libraries SET isPrivate = :isPrivate WHERE parentId = :parentId")
     suspend fun setChildrenPrivate(parentId: String, isPrivate: Boolean)
 

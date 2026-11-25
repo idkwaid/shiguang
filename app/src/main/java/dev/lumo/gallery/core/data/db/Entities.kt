@@ -18,6 +18,8 @@ data class LibraryEntity(
     val parentId: String? = null,
     /** 扫描模式：RECURSIVE=整体导入(递归)；DIRECT=分组节点(只扫直接子项) */
     val scanMode: String = "RECURSIVE",
+    /** 图库卡片右下角的收藏（与图片收藏独立）。 */
+    val isFavorite: Boolean = false,
     val archiveUri: String?,
     val archiveFormat: String?,
     val displayPath: String,

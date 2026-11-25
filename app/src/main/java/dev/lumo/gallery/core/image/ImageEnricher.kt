@@ -23,7 +23,11 @@ class ImageEnricher(
     private val thumbnailer: Thumbnailer,
     private val provider: MediaStreamProvider,
     private val scope: CoroutineScope,
-    private val io: CoroutineDispatcher = Dispatchers.IO
+    private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** 当前缩略图清晰度（设置页可改），由容器注入。 */
+    private val qualityProvider: () -> dev.lumo.gallery.core.model.ThumbnailQuality = {
+        dev.lumo.gallery.core.model.ThumbnailQuality.LOW
+    }
 ) {
 
     private val jobs = ConcurrentHashMap<String, Job>()
@@ -51,8 +55,17 @@ class ImageEnricher(
             if (pending.isEmpty()) return
             for (entity in pending) {
                 val item = entity.toModel()
+                val quality = qualityProvider()
                 val result = permits.withPermit {
-                    runCatching { thumbnailer.generate(library, item, provider) }.getOrNull()
+                    runCatching {
+                        thumbnailer.generate(
+                            library = library,
+                            item = item,
+                            provider = provider,
+                            maxSize = quality.maxSize,
+                            jpegQuality = quality.jpegQuality
+                        )
+                    }.getOrNull()
                 }
                 if (result != null) {
                     val hash = PHash.fromFile(result.file)

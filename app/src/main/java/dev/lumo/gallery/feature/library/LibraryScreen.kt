@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -83,8 +84,8 @@ import dev.lumo.gallery.core.security.SecureScreen
 import dev.lumo.gallery.core.util.ShareHelper
 import dev.lumo.gallery.feature.tags.TagEditorDialog
 import kotlinx.coroutines.launch
-import dev.lumo.gallery.core.ui.components.ChildLibraryCard
 import dev.lumo.gallery.core.ui.components.EmptyState
+import dev.lumo.gallery.core.ui.components.LibraryTile
 import dev.lumo.gallery.core.ui.components.PhotoTile
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -286,105 +287,64 @@ fun LibraryScreen(
                     }
                 )
                 else -> Box(Modifier.fillMaxSize()) {
-                    Column(Modifier.fillMaxSize()) {
+                    LazyVerticalStaggeredGrid(
+                        columns = StaggeredGridCells.Fixed(2),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(12.dp, 4.dp, 12.dp, 90.dp),
+                        verticalItemSpacing = 8.dp,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         if (children.isNotEmpty()) {
-                            Text(
-                                text = "子图库 · ${children.size}",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 2.dp)
-                            )
-                            androidx.compose.foundation.lazy.LazyRow(
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                items(children, key = { it.id }) { child ->
-                                    ChildLibraryCard(
-                                        library = child,
-                                        cover = childCovers[child.coverItemId],
-                                        onClick = { onOpenLibrary(child.id) }
-                                    )
-                                }
-                            }
-                        }
-
-                        if (items.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f),
-                                contentAlignment = Alignment.Center
-                            ) {
+                            item(span = StaggeredGridItemSpan.FullLine) {
                                 Text(
-                                    text = "这个图库只有子图库，点上方卡片继续浏览",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = "子图库 · ${children.size}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 4.dp, top = 6.dp, bottom = 2.dp)
                                 )
                             }
-                        } else {
-                            LazyVerticalStaggeredGrid(
-                                columns = StaggeredGridCells.Fixed(2),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f),
-                                contentPadding = PaddingValues(12.dp, 4.dp, 12.dp, 90.dp),
-                                verticalItemSpacing = 8.dp,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                items(items, key = { it.id }) { item ->
-                                    PhotoTile(
-                                        item = item,
-                                        onClick = { onOpenViewer(libraryId, item.id) },
-                                        onLongClick = { actionItem = item }
+                            items(children, key = { "lib-${it.id}" }) { child ->
+                                LibraryTile(
+                                    library = child,
+                                    cover = childCovers[child.coverItemId],
+                                    onFavoriteToggle = { vm.toggleLibraryFavorite(child) },
+                                    onClick = { onOpenLibrary(child.id) }
+                                )
+                            }
+                        }
+                        if (items.isNotEmpty()) {
+                            if (children.isNotEmpty()) {
+                                item(span = StaggeredGridItemSpan.FullLine) {
+                                    Text(
+                                        text = "照片 · ${items.size}",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(start = 4.dp, top = 10.dp, bottom = 2.dp)
                                     )
                                 }
+                            }
+                            items(items, key = { it.id }) { item ->
+                                PhotoTile(
+                                    item = item,
+                                    onClick = { onOpenViewer(libraryId, item.id) },
+                                    onLongClick = { actionItem = item }
+                                )
                             }
                         }
                     }
 
-                    if (continueInfo != null) {
-                        val info = continueInfo!!
-                        Surface(
-                            onClick = {
-                                items.getOrNull(info.index)?.let { onOpenViewer(libraryId, it.id) }
-                            },
-                            shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                            shadowElevation = 6.dp,
+                    if (items.isEmpty() && children.isNotEmpty()) {
+                        Text(
+                            text = "这个图库只有子图库，点卡片继续浏览",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .padding(bottom = 22.dp)
-                        ) {
-                            Text(
-                                text = "继续浏览 · 第 ${info.index + 1} 张",
-                                style = MaterialTheme.typography.labelLarge,
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
-                            )
-                        }
-                    }
-                    val progress = scanProgress
-                    if (progress != null && progress.phase != dev.lumo.gallery.core.model.ScanProgress.Phase.DONE) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
-                                .padding(horizontal = 14.dp, vertical = 8.dp)
-                        ) {
-                            Text(
-                                text = progress.message,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            LinearProgressIndicator(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .fillMaxWidth()
-                            )
-                        }
+                                .padding(bottom = 26.dp)
+                        )
                     }
                 }
+
             }
             }
         }

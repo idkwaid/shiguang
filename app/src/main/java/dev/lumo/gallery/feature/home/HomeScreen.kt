@@ -208,6 +208,7 @@ fun HomeScreen(
                         cover = library.coverItemId?.let { covers[it] },
                         scanning = scanStates[library.id],
                         childCount = childCounts[library.id] ?: 0,
+                        onFavoriteToggle = { vm.toggleLibraryFavorite(library) },
                         onClick = { onOpenLibrary(library.id) },
                         onLongClick = { actionTarget = library }
                     )

@@ -120,6 +120,10 @@ class LibraryViewModel(
         }
     }
 
+    fun toggleLibraryFavorite(library: Library) {
+        viewModelScope.launch { libraries.setLibraryFavorite(library.id, !library.isFavorite) }
+    }
+
     fun toggleFavorite(item: MediaItem) {
         viewModelScope.launch { media.setFavorite(item.id, !item.isFavorite) }
     }

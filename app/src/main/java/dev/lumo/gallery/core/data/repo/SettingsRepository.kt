@@ -8,11 +8,13 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import dev.lumo.gallery.core.model.ThumbnailQuality
 
 private val Context.settingsDataStore by preferencesDataStore(name = "lumo_settings")
 
 data class AppSettings(
     val slideshowIntervalSec: Int = 3,
+    val thumbnailQuality: ThumbnailQuality = ThumbnailQuality.LOW,
     val dynamicColor: Boolean = true,
     val pinHash: String? = null,
     val pinSalt: String? = null,
@@ -29,16 +31,26 @@ class SettingsRepository(private val context: Context) {
         val pinHash = stringPreferencesKey("pin_hash")
         val pinSalt = stringPreferencesKey("pin_salt")
         val biometric = booleanPreferencesKey("biometric_unlock")
+        val thumbnailQuality = stringPreferencesKey("thumbnail_quality")
     }
 
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
         AppSettings(
             slideshowIntervalSec = (prefs[Keys.slideshowInterval] ?: 3).coerceIn(1, 10),
+            thumbnailQuality = prefs[Keys.thumbnailQuality]
+                ?.let { runCatching { ThumbnailQuality.valueOf(it) }.getOrNull() }
+                ?: ThumbnailQuality.LOW,
             dynamicColor = prefs[Keys.dynamicColor] ?: true,
             pinHash = prefs[Keys.pinHash],
             pinSalt = prefs[Keys.pinSalt],
             biometricUnlock = prefs[Keys.biometric] ?: true
         )
+    }
+
+    suspend fun setThumbnailQuality(quality: ThumbnailQuality) {
+        context.settingsDataStore.edit {
+            it[Keys.thumbnailQuality] = quality.name
+        }
     }
 
     suspend fun setSlideshowInterval(seconds: Int) {

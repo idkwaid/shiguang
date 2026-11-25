@@ -30,6 +30,7 @@ import dev.lumo.gallery.core.security.PrivateAccess
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * 手写依赖容器（不用 Hilt，构建更快、AGP 兼容面更小）。
@@ -58,7 +59,26 @@ class AppContainer(context: Context) {
         archive = archiveStreamProvider
     )
 
-    val enricher = ImageEnricher(database, thumbnailer, streamProvider, appScope)
+    val settingsRepository = SettingsRepository(appContext)
+
+    @Volatile
+    private var thumbnailQuality = dev.lumo.gallery.core.model.ThumbnailQuality.LOW
+
+    init {
+        appScope.launch {
+            settingsRepository.settings.collect { settings ->
+                thumbnailQuality = settings.thumbnailQuality
+            }
+        }
+    }
+
+    val enricher = ImageEnricher(
+        db = database,
+        thumbnailer = thumbnailer,
+        provider = streamProvider,
+        scope = appScope,
+        qualityProvider = { thumbnailQuality }
+    )
 
     private val indexer = MediaIndexer(database)
     private val folderScanner = FolderScanner(appContext, database, walker, permissions, progressBus, indexer)
@@ -87,7 +107,6 @@ class AppContainer(context: Context) {
     )
 
     val mediaRepository = MediaRepository(database, appContext)
-    val settingsRepository = SettingsRepository(appContext)
     val privateAccess = PrivateAccess()
 
     val imageLoader: ImageLoader = ImageLoader.Builder(appContext)

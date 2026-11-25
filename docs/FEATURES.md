@@ -18,11 +18,11 @@
 | # | 功能 | 实现 | 位置 | 状态 |
 |---|---|---|---|---|
 | 2.1 | 图库内垂直瀑布流 | `LazyVerticalStaggeredGrid` 两列 + 按宽高比占位 | `LibraryScreen`、`PhotoTile` | ✅ |
-| 2.2 | 沉浸全屏、左右滑动、缩放拖拽、边缘返回、中央点击底部页码滑杆 | `HorizontalPager` + 自研 `ZoomablePhoto`；点击中央切换底部 Slider（可拖动跳页），顶部保留页码 | `feature/viewer/`、`core/ui/components/ZoomablePhoto.kt` | ✅ |
+| 2.2 | 沉浸全屏、左右滑动、缩放拖拽、边缘返回、中央点击底部页码滑杆 | `HorizontalPager` + 自研 `ZoomablePhoto`；v0.5.0 移除双指长按对比（修缩放被重置），缩放/位移手势不再被打断 | `feature/viewer/`、`core/ui/components/ZoomablePhoto.kt` | ✅ |
 | 2.3 | 页码快速跳转 | v0.3.0 起改为底部拖动滑杆直接跳页；缩略图网格入口已移除 | `ViewerScreen` | ✅ |
 | 2.4 | 记忆位置 / 继续浏览提示 | `reading_progress` 表 + 图库页“继续浏览·第 N 张”chip | `MediaRepository`、`LibraryScreen` | ✅ |
 | 2.5 | 幻灯片（可设间隔、随机） | 全屏自动播放；间隔可点选 2/3/5/10 秒（持久化到 DataStore），可切换随机顺序 | `ViewerScreen`、`SettingsRepository` | ✅ |
-| 2.6 | 双指长按临时原图对比 | `ZoomablePhoto` 双指按住 350ms → 1x，松手恢复 | `ZoomablePhoto.kt` | ✅ |
+| 2.6 | 双指长按对比原图 | 按 v0.5.0 反馈移除（与双指缩放冲突，导致缩放中途被重置） | — | ❌ 已删除 |
 
 ## 三、收藏与探索
 
@@ -30,7 +30,7 @@
 |---|---|---|---|---|
 | 3.1 | 全局收藏 + 失效占位 + 一键清理 | 跨图库查询；源丢失 `isPresent=0` 灰占位；清理失效收藏 | `MediaDao.observeFavorites`、`FavoritesScreen` | ✅ |
 | 3.2 | 随机 | 跟随当前图库：只在当前库的直接图片/直接子库中随机；首页随机顶层图库 | `HomeScreen`、`LibraryScreen` | ✅ |
-| 3.3 | 星标 + 自定义标签 + 首页聚合 | 图片右下角爱心直接收藏；标签 CRUD、首页标签 chips、标签详情、长按打标签 | `PhotoTile`、`feature/tags/`、`HomeScreen` | ✅ |
+| 3.3 | 星标 + 自定义标签 + 图库收藏 | 图片右下角爱心；图库卡片右下角爱心（收藏图库）；标签 CRUD、首页标签 chips、标签详情 | `PhotoTile`、`LibraryCard/LibraryTile`、`FavoritesScreen`、`feature/tags/` | ✅ |
 | 3.4 | 那年今日 | 按 v0.4.0 需求移除（页面/入口/代码均删除） | — | ❌ 已删除 |
 
 ## 四、信息与工具
@@ -64,6 +64,15 @@
 |---|---|---|
 | 文件日志 + 轮转 + 崩溃落盘 | `AppLog`（1MB × 3 份，Logcat 同步） | `core/util/AppLog.kt` |
 | 应用内查看/分享/清空 | 设置 → 运行日志 | `feature/logs/LogsScreen.kt` |
+
+## 缩略图与图库卡片（v0.5.0）
+
+| 功能 | 实现 | 位置 |
+|---|---|---|
+| 缩略图清晰度设置 | 256/384/512px 三档，默认低清；切换后清缓存重建 | `SettingsScreen`、`ImageEnricher`、`ThumbnailQuality` |
+| 子图库网格 | 图库页把子图库卡片与照片放在同一个瀑布流网格 | `LibraryScreen`、`LibraryTile` |
+| 图库卡片数量/收藏 | 右上角照片数，右下角图库收藏爱心 | `LibraryCard.kt` |
+| 收藏页图库分区 | 「收藏的图库」+「收藏的图片」 | `FavoritesScreen` |
 
 ## 导航与入口（v0.4.0）
 

@@ -499,6 +499,13 @@ class LibraryRepository(
         db.libraryDao().rename(libraryId, name)
     }
 
+    fun observeFavoriteLibraries(): Flow<List<Library>> =
+        db.libraryDao().observeFavoriteLibraries().map { list -> list.map(LibraryEntity::toModel) }
+
+    suspend fun setLibraryFavorite(libraryId: String, favorite: Boolean) {
+        db.libraryDao().setFavorite(libraryId, favorite)
+    }
+
     suspend fun setPrivate(libraryId: String, isPrivate: Boolean) {
         // 级联到子图库，保证进入子图库时同样走门禁
         db.libraryDao().setPrivate(libraryId, isPrivate)
