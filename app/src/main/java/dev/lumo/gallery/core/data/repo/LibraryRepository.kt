@@ -20,6 +20,7 @@ import dev.lumo.gallery.core.archive.ArchiveStagingCache
 import dev.lumo.gallery.core.image.ImageEnricher
 import dev.lumo.gallery.core.image.ThumbCache
 import dev.lumo.gallery.core.model.Library
+import dev.lumo.gallery.core.model.MediaItem
 import dev.lumo.gallery.core.model.ArchiveFormat
 import dev.lumo.gallery.core.model.LibraryType
 import dev.lumo.gallery.core.model.ScanMode
@@ -28,6 +29,7 @@ import dev.lumo.gallery.core.model.ScanStatus
 import dev.lumo.gallery.core.model.SortMode
 import dev.lumo.gallery.core.util.AppLog
 import dev.lumo.gallery.core.util.MimeTypes
+import dev.lumo.gallery.core.util.NaturalSortKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -433,7 +435,7 @@ class LibraryRepository(
      * 修复“库里标记 thumbReady 但缩略图文件已丢失/从未生成”的条目并重新富化。
      * 升级旧版本、清缓存、或上次解码失败后都会用到。
      */
-    suspend fun ensureThumbnails(libraryId: String) {
+    suspend fun ensureThumbnails(libraryId: String, prioritize: Boolean = false) {
         val ready = db.mediaDao().thumbReadyItems(libraryId)
         var reset = 0
         for (entity in ready) {
@@ -443,7 +445,7 @@ class LibraryRepository(
             }
         }
         if (reset > 0 || db.mediaDao().itemsNeedingThumbnailsInLibrary(libraryId, 1).isNotEmpty()) {
-            enricher.enqueue(libraryId)
+            if (prioritize) enricher.prioritize(libraryId) else enricher.enqueue(libraryId)
         }
     }
 
@@ -504,6 +506,223 @@ class LibraryRepository(
 
     suspend fun setLibraryFavorite(libraryId: String, favorite: Boolean) {
         db.libraryDao().setFavorite(libraryId, favorite)
+    }
+
+    fun observeFolderLibraries(): Flow<List<Library>> =
+        db.libraryDao().observeFolderLibraries().map { list -> list.map(LibraryEntity::toModel) }
+
+    // ================= 多选批量操作 =================
+
+    suspend fun setImagesFavorite(ids: Collection<String>, favorite: Boolean) {
+        ids.forEach { db.mediaDao().setFavorite(it, favorite) }
+    }
+
+    suspend fun setLibrariesFavorite(ids: Collection<String>, favorite: Boolean) {
+        ids.forEach { db.libraryDao().setFavorite(it, favorite) }
+    }
+
+    data class DeleteSummary(val filesDeleted: Int, val indexOnly: Int)
+
+    suspend fun deleteImages(items: List<MediaItem>, applyToRealFiles: Boolean): DeleteSummary {
+        var filesDeleted = 0
+        var indexOnly = 0
+        for (item in items) {
+            val entity = db.libraryDao().getById(item.libraryId)
+            val isFolder = entity?.type == LibraryType.FOLDER.name
+            var deleted = false
+            if (applyToRealFiles && isFolder) {
+                val uri = item.docUri?.let(Uri::parse)
+                if (uri != null) {
+                    deleted = runCatching {
+                        DocumentsContract.deleteDocument(context.contentResolver, uri)
+                    }.getOrDefault(false)
+                }
+            }
+            db.mediaDao().deleteById(item.id)
+            if (deleted) filesDeleted++ else indexOnly++
+        }
+        AppLog.i("Ops", "删除图片 size=${items.size} files=$filesDeleted indexOnly=$indexOnly apply=$applyToRealFiles")
+        return DeleteSummary(filesDeleted, indexOnly)
+    }
+
+    suspend fun deleteLibraries(libs: List<Library>, applyToRealFiles: Boolean): DeleteSummary {
+        var filesDeleted = 0
+        var indexOnly = 0
+        for (library in libs) {
+            val entity = db.libraryDao().getById(library.id) ?: continue
+            var deleted = false
+            // 只对“子图库”尝试删实际文件夹；顶层图库对应你整棵授权目录，绝不物理删除
+            if (applyToRealFiles && entity.type == LibraryType.FOLDER.name &&
+                !entity.treeRootRelPath.isNullOrBlank()
+            ) {
+                val tree = entity.treeUri?.let(Uri::parse)
+                val rel = entity.treeRootRelPath
+                if (tree != null && rel != null) {
+                    val docId = walker.resolveDocId(tree, rel)
+                    if (docId != null) {
+                        val docUri = DocumentsContract.buildDocumentUriUsingTree(tree, docId)
+                        deleted = runCatching {
+                            DocumentsContract.deleteDocument(context.contentResolver, docUri)
+                        }.getOrDefault(false)
+                    }
+                }
+            }
+            delete(library.id)
+            if (deleted) filesDeleted++ else indexOnly++
+        }
+        AppLog.i("Ops", "删除图库 size=${libs.size} files=$filesDeleted indexOnly=$indexOnly apply=$applyToRealFiles")
+        return DeleteSummary(filesDeleted, indexOnly)
+    }
+
+    data class MoveSummary(val physical: Int, val logical: Int, val failed: Int)
+
+    /** 图片移动：开启“实际操作文件”时用 SAF moveDocument 真移动，否则只调整 App 内归属。 */
+    suspend fun moveImages(
+        items: List<MediaItem>,
+        targetLibraryId: String,
+        applyToRealFiles: Boolean
+    ): MoveSummary {
+        val target = db.libraryDao().getById(targetLibraryId)?.toModel()
+            ?: return MoveSummary(0, 0, items.size)
+        if (target.type != LibraryType.FOLDER) return MoveSummary(0, 0, items.size)
+        var physical = 0
+        var logical = 0
+        var failed = 0
+        val sourcesToRefresh = LinkedHashSet<String>()
+
+        for (item in items) {
+            val source = db.libraryDao().getById(item.libraryId)?.toModel()
+            var moved = false
+            if (applyToRealFiles && source?.type == LibraryType.FOLDER &&
+                source.treeUri != null && target.treeUri != null
+            ) {
+                moved = runCatching {
+                    val srcTree = Uri.parse(source.treeUri)
+                    val tgtTree = Uri.parse(target.treeUri)
+                    val srcDoc = item.docUri?.let(Uri::parse) ?: return@runCatching false
+                    val srcParentRel = item.locator.substringBeforeLast('/', "")
+                    val srcParentId = walker.resolveDocId(srcTree, srcParentRel)
+                        ?: return@runCatching false
+                    val srcParentDoc = DocumentsContract.buildDocumentUriUsingTree(srcTree, srcParentId)
+                    val tgtDirId = walker.resolveDocId(tgtTree, target.treeRootRelPath ?: "")
+                        ?: return@runCatching false
+                    val tgtDirDoc = DocumentsContract.buildDocumentUriUsingTree(tgtTree, tgtDirId)
+                    DocumentsContract.moveDocument(
+                        context.contentResolver, srcDoc, srcParentDoc, tgtDirDoc
+                    ) != null
+                }.getOrDefault(false)
+                if (moved) {
+                    db.mediaDao().deleteById(item.id)
+                    physical++
+                    sourcesToRefresh.add(item.libraryId)
+                    continue
+                }
+            }
+            // 逻辑移动：只改索引归属，文件仍在原处
+            runCatching {
+                val locator = uniqueLocator(target.id, item.displayName)
+                db.mediaDao().moveItemToLibrary(
+                    id = item.id,
+                    libraryId = target.id,
+                    locator = locator,
+                    sortKey = NaturalSortKey.of(item.displayName)
+                )
+                logical++
+            }.onFailure { failed++ }
+            sourcesToRefresh.add(item.libraryId)
+        }
+        if (physical > 0) {
+            sourcesToRefresh.forEach { startScan(it, "移动后刷新") }
+            startScan(target.id, "移动后刷新")
+        }
+        AppLog.i(
+            "Ops",
+            "移动图片 size=${items.size} target=${target.name} physical=$physical logical=$logical failed=$failed apply=$applyToRealFiles"
+        )
+        return MoveSummary(physical, logical, failed)
+    }
+
+    /** 图库移动：调整层级；子图库同树且开启实际文件操作时尝试移动真实文件夹。 */
+    suspend fun moveLibraries(
+        libs: List<Library>,
+        newParentId: String?,
+        applyToRealFiles: Boolean
+    ): MoveSummary {
+        val targetParent = newParentId?.let { db.libraryDao().getById(it)?.toModel() }
+        var physical = 0
+        var logical = 0
+        var failed = 0
+
+        for (library in libs) {
+            if (newParentId != null && isDescendantOrSelf(newParentId, library.id)) {
+                failed++
+                continue
+            }
+            var moved = false
+            if (applyToRealFiles && targetParent != null &&
+                library.type == LibraryType.FOLDER && targetParent.type == LibraryType.FOLDER &&
+                !library.treeRootRelPath.isNullOrBlank() &&
+                library.treeUri != null && targetParent.treeUri == library.treeUri
+            ) {
+                moved = runCatching {
+                    val tree = Uri.parse(library.treeUri)
+                    val rel = library.treeRootRelPath ?: return@runCatching false
+                    val dirId = walker.resolveDocId(tree, rel) ?: return@runCatching false
+                    val dirDoc = DocumentsContract.buildDocumentUriUsingTree(tree, dirId)
+                    val parentRel = rel.substringBeforeLast('/', "")
+                    val parentId = walker.resolveDocId(tree, parentRel) ?: return@runCatching false
+                    val parentDoc = DocumentsContract.buildDocumentUriUsingTree(tree, parentId)
+                    val targetDirId = walker.resolveDocId(tree, targetParent.treeRootRelPath ?: "")
+                        ?: return@runCatching false
+                    val targetDirDoc = DocumentsContract.buildDocumentUriUsingTree(tree, targetDirId)
+                    DocumentsContract.moveDocument(
+                        context.contentResolver, dirDoc, parentDoc, targetDirDoc
+                    ) != null
+                }.getOrDefault(false)
+                if (moved) {
+                    val newRel = buildString {
+                        val base = targetParent.treeRootRelPath
+                        if (!base.isNullOrBlank()) append(base).append('/')
+                        append(library.name)
+                    }
+                    db.libraryDao().setParentAndPath(library.id, targetParent.id, newRel)
+                    physical++
+                    startScan(library.id, "移动后刷新")
+                    startScan(targetParent.id, "移动后刷新")
+                    continue
+                }
+            }
+            db.libraryDao().setParent(library.id, newParentId)
+            logical++
+        }
+        AppLog.i(
+            "Ops",
+            "移动图库 size=${libs.size} parent=$newParentId physical=$physical logical=$logical failed=$failed apply=$applyToRealFiles"
+        )
+        return MoveSummary(physical, logical, failed)
+    }
+
+    private suspend fun uniqueLocator(libraryId: String, name: String): String {
+        if (db.mediaDao().findByLocator(libraryId, name) == null) return name
+        val base = name.substringBeforeLast('.', name)
+        val extension = name.substringAfterLast('.', "")
+        var index = 1
+        while (index < 10_000) {
+            val candidate = if (extension.isNotEmpty()) "$base ($index).$extension" else "$base ($index)"
+            if (db.mediaDao().findByLocator(libraryId, candidate) == null) return candidate
+            index++
+        }
+        return "${base}_${System.currentTimeMillis()}"
+    }
+
+    private suspend fun isDescendantOrSelf(candidateId: String, ancestorId: String): Boolean {
+        var current: String? = candidateId
+        var guard = 0
+        while (current != null && guard++ < 100) {
+            if (current == ancestorId) return true
+            current = db.libraryDao().getById(current)?.parentId
+        }
+        return false
     }
 
     suspend fun setPrivate(libraryId: String, isPrivate: Boolean) {

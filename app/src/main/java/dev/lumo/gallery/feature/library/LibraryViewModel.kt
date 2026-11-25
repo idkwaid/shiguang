@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import dev.lumo.gallery.core.data.repo.LibraryRepository
 import dev.lumo.gallery.core.data.repo.MediaRepository
+import dev.lumo.gallery.core.data.repo.SettingsRepository
 import dev.lumo.gallery.core.data.scan.ScanOutcome
 import dev.lumo.gallery.core.model.Library
 import dev.lumo.gallery.core.model.MediaItem
@@ -31,7 +32,8 @@ data class ContinueInfo(
 class LibraryViewModel(
     private val libraryId: String,
     private val libraries: LibraryRepository,
-    private val media: MediaRepository
+    private val media: MediaRepository,
+    private val containerSettings: SettingsRepository
 ) : ViewModel() {
 
     val library: StateFlow<Library?> = libraries.observeById(libraryId)
@@ -69,10 +71,15 @@ class LibraryViewModel(
 
     init {
         viewModelScope.launch {
-            libraries.ensureThumbnails(libraryId)
+            libraries.ensureThumbnails(libraryId, prioritize = true)
             val current = libraries.get(libraryId)
             if (current != null && current.lastScanAt == 0L) {
                 libraries.scan(libraryId, "首次打开")
+            } else if (current != null && current.scanMode == dev.lumo.gallery.core.model.ScanMode.DIRECT &&
+                System.currentTimeMillis() - current.lastScanAt > 30_000L
+            ) {
+                // 打开分组节点时校准一次，修复旧版本可能残留的“父库混入子目录图片”
+                libraries.startScan(libraryId, "打开时校准")
             }
         }
     }
@@ -117,6 +124,90 @@ class LibraryViewModel(
         viewModelScope.launch {
             val ok = libraries.reauthorize(libraryId, treeUri)
             if (!ok) _messages.emit("重新授权失败")
+        }
+    }
+
+    val folderLibraries: StateFlow<List<Library>> = libraries.observeFolderLibraries()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val applyToRealFiles: StateFlow<Boolean> = containerSettings.settings
+        .map { it.applyToRealFiles }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
+    fun setImagesFavorite(ids: Collection<String>, favorite: Boolean) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            libraries.setImagesFavorite(ids, favorite)
+            _messages.emit(if (favorite) "已收藏 ${ids.size} 张图片" else "已取消收藏")
+        }
+    }
+
+    fun setLibrariesFavorite(ids: Collection<String>, favorite: Boolean) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            libraries.setLibrariesFavorite(ids, favorite)
+            _messages.emit(if (favorite) "已收藏 ${ids.size} 个图库" else "已取消收藏")
+        }
+    }
+
+    fun moveImages(ids: Collection<String>, targetLibraryId: String) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            val items = items.value.filter { it.id in ids }
+            val result = libraries.moveImages(items, targetLibraryId, applyToRealFiles.value)
+            _messages.emit(
+                buildString {
+                    append("已移动 ${result.physical + result.logical} 张图片")
+                    if (result.physical > 0) append("（实际移动文件 ${result.physical}）")
+                    if (result.logical > 0) append("（仅调整归属 ${result.logical}）")
+                    if (result.failed > 0) append("，失败 ${result.failed}")
+                }
+            )
+        }
+    }
+
+    fun moveLibraries(ids: Collection<String>, newParentId: String?) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            val libs = children.value.filter { it.id in ids }
+            val result = libraries.moveLibraries(libs, newParentId, applyToRealFiles.value)
+            _messages.emit(
+                buildString {
+                    append("已移动 ${result.physical + result.logical} 个图库")
+                    if (result.physical > 0) append("（实际移动文件夹 ${result.physical}）")
+                    if (result.failed > 0) append("，失败 ${result.failed}")
+                }
+            )
+        }
+    }
+
+    fun deleteImages(ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            val selected = items.value.filter { it.id in ids }
+            val result = libraries.deleteImages(selected, applyToRealFiles.value)
+            _messages.emit(
+                buildString {
+                    append("已移除 ${ids.size} 张图片")
+                    if (result.filesDeleted > 0) append("，实际删除文件 ${result.filesDeleted}")
+                    if (result.indexOnly > 0) append("，${result.indexOnly} 张仅移除索引")
+                }
+            )
+        }
+    }
+
+    fun deleteLibraries(ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            val selected = children.value.filter { it.id in ids }
+            val result = libraries.deleteLibraries(selected, applyToRealFiles.value)
+            _messages.emit(
+                buildString {
+                    append("已移除 ${ids.size} 个图库")
+                    if (result.filesDeleted > 0) append("，实际删除文件夹 ${result.filesDeleted}")
+                    if (result.indexOnly > 0) append("，${result.indexOnly} 个仅移除索引")
+                }
+            )
         }
     }
 
@@ -165,6 +256,21 @@ class LibraryViewModel(
         viewModelScope.launch { media.clearProgress(libraryId) }
     }
 
+    fun deleteLibraryTree(onDone: () -> Unit) {
+        viewModelScope.launch {
+            val current = libraries.get(libraryId) ?: return@launch
+            val result = libraries.deleteLibraries(listOf(current), applyToRealFiles.value)
+            _messages.emit(
+                buildString {
+                    append("已移除「${current.name}」")
+                    if (result.filesDeleted > 0) append("，实际删除文件夹 ${result.filesDeleted}")
+                    if (result.indexOnly > 0) append("，仅移除索引")
+                }
+            )
+            onDone()
+        }
+    }
+
     fun removeLibrary(onDone: () -> Unit) {
         viewModelScope.launch {
             libraries.delete(libraryId)
@@ -180,7 +286,8 @@ class LibraryViewModel(
             LibraryViewModel(
                 libraryId = libraryId,
                 libraries = container.libraryRepository,
-                media = container.mediaRepository
+                media = container.mediaRepository,
+                containerSettings = container.settingsRepository
             )
         }
     }

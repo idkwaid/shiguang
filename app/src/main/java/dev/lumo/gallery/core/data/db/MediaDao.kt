@@ -25,6 +25,9 @@ interface MediaDao {
     @Query("SELECT * FROM media_items WHERE id = :id")
     suspend fun getById(id: String): MediaItemEntity?
 
+    @Query("SELECT * FROM media_items WHERE libraryId = :libraryId AND locator = :locator LIMIT 1")
+    suspend fun findByLocator(libraryId: String, locator: String): MediaItemEntity?
+
     @Query("SELECT * FROM media_items WHERE id = :id")
     fun observeById(id: String): Flow<MediaItemEntity?>
 
@@ -115,6 +118,20 @@ interface MediaDao {
 
     @Query("DELETE FROM media_items WHERE isFavorite = 1 AND isPresent = 0")
     suspend fun deleteAbsentFavorites(): Int
+
+    @Query("DELETE FROM media_items WHERE libraryId = :libraryId AND isPresent = 0 AND isFavorite = 0")
+    suspend fun deleteAbsentNonFavorite(libraryId: String): Int
+
+    @Query(
+        "UPDATE media_items SET libraryId = :libraryId, locator = :locator, sortKey = :sortKey, " +
+            "thumbReady = 0, isPresent = 1 WHERE id = :id"
+    )
+    suspend fun moveItemToLibrary(
+        id: String,
+        libraryId: String,
+        locator: String,
+        sortKey: String
+    )
 
     @Query(
         "SELECT m.* FROM media_items m INNER JOIN libraries l ON l.id = m.libraryId " +

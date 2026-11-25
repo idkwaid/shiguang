@@ -83,6 +83,18 @@ interface LibraryDao {
     @Query("SELECT * FROM libraries WHERE isFavorite = 1 AND isPrivate = 0 ORDER BY createdAt DESC")
     fun observeFavoriteLibraries(): Flow<List<LibraryEntity>>
 
+    @Query("SELECT * FROM libraries WHERE type = 'FOLDER' AND isPrivate = 0 ORDER BY name")
+    fun observeFolderLibraries(): Flow<List<LibraryEntity>>
+
+    @Query("SELECT * FROM libraries WHERE type = 'FOLDER' AND isPrivate = 0 ORDER BY name")
+    suspend fun getFolderLibrariesOnce(): List<LibraryEntity>
+
+    @Query("UPDATE libraries SET parentId = :parentId WHERE id = :id")
+    suspend fun setParent(id: String, parentId: String?)
+
+    @Query("UPDATE libraries SET parentId = :parentId, treeRootRelPath = :relPath WHERE id = :id")
+    suspend fun setParentAndPath(id: String, parentId: String?, relPath: String?)
+
     @Query("UPDATE libraries SET isPrivate = :isPrivate WHERE parentId = :parentId")
     suspend fun setChildrenPrivate(parentId: String, isPrivate: Boolean)
 

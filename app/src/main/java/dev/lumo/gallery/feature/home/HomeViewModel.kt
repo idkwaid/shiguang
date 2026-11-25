@@ -58,6 +58,13 @@ class HomeViewModel(
     val tags: StateFlow<List<Tag>> = media.observeTags()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val folderLibraries: StateFlow<List<Library>> = libraries.observeFolderLibraries()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val applyToRealFiles: StateFlow<Boolean> = settings.settings
+        .map { it.applyToRealFiles }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
     val hasPin: StateFlow<Boolean> = settings.settings
         .map { it.hasPin }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
@@ -92,6 +99,49 @@ class HomeViewModel(
             } finally {
                 _busy.value = false
             }
+        }
+    }
+
+    fun setLibrariesFavorite(ids: Collection<String>, favorite: Boolean) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            libraries.setLibrariesFavorite(ids, favorite)
+            _messages.emit(if (favorite) "已收藏 ${ids.size} 个图库" else "已取消收藏")
+        }
+    }
+
+    fun moveLibraries(ids: Collection<String>, newParentId: String?) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            val result = libraries.moveLibraries(
+                libs = libraryList.value.filter { it.id in ids },
+                newParentId = newParentId,
+                applyToRealFiles = applyToRealFiles.value
+            )
+            _messages.emit(
+                buildString {
+                    append("已移动 ${result.logical + result.physical} 个图库")
+                    if (result.physical > 0) append("（实际移动文件夹 ${result.physical}）")
+                    if (result.failed > 0) append("，失败 ${result.failed}")
+                }
+            )
+        }
+    }
+
+    fun deleteLibraries(ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            val result = libraries.deleteLibraries(
+                libs = libraryList.value.filter { it.id in ids },
+                applyToRealFiles = applyToRealFiles.value
+            )
+            _messages.emit(
+                buildString {
+                    append("已移除 ${ids.size} 个图库")
+                    if (result.filesDeleted > 0) append("，实际删除文件夹 ${result.filesDeleted}")
+                    if (result.indexOnly > 0) append("，${result.indexOnly} 个仅移除索引")
+                }
+            )
         }
     }
 

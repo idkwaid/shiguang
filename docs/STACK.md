@@ -31,7 +31,7 @@
 | `minSdk` | 26（Android 8.0） |
 | `targetSdk` | 36 |
 | `compileSdk` | 37 + `compileSdkMinor = 1`（Compose 1.13 要求 37.1+） |
-| 构建产物 | `app/build/outputs/apk/debug/app-debug.apk`（v0.5.0 / versionCode 5） |
+| 构建产物 | `app/build/outputs/apk/debug/app-debug.apk`（v0.6.0 / versionCode 6） |
 
 ## 依赖库
 

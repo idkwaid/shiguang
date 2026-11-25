@@ -1,6 +1,7 @@
 package dev.lumo.gallery.core.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -13,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.Icon
@@ -41,6 +43,9 @@ fun PhotoTile(
     item: MediaItem,
     modifier: Modifier = Modifier,
     showFavoriteBadge: Boolean = true,
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onToggleSelect: () -> Unit = {},
     onClick: () -> Unit = {},
     onLongClick: (() -> Unit)? = null
 ) {
@@ -58,7 +63,17 @@ fun PhotoTile(
             .aspectRatioSafe(ratio)
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+            .combinedClickable(
+                onClick = { if (selectionMode) onToggleSelect() else onClick() },
+                onLongClick = onLongClick
+            )
+            .then(
+                if (selected) Modifier.border(
+                    2.dp,
+                    MaterialTheme.colorScheme.primary,
+                    RoundedCornerShape(12.dp)
+                ) else Modifier
+            ),
         contentAlignment = Alignment.Center
     ) {
         when {
@@ -91,7 +106,23 @@ fun PhotoTile(
             )
         }
 
-        if (showFavoriteBadge) {
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0x552B2B2B))
+            )
+            Icon(
+                imageVector = Icons.Outlined.CheckCircle,
+                contentDescription = "已选择",
+                tint = Color.White,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(30.dp)
+            )
+        }
+
+        if (showFavoriteBadge && !selectionMode) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)

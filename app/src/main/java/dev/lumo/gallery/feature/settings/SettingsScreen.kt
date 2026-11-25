@@ -149,6 +149,26 @@ fun SettingsScreen(onOpenLogs: () -> Unit = {}, onOpenCleanup: () -> Unit = {}) 
                     )
                 }
             }
+            ListItem(
+                headlineContent = { Text("移动/删除应用到实际文件夹") },
+                supportingContent = {
+                    Text(
+                        if (settings.applyToRealFiles) {
+                            "开启：移动/删除会修改手机里的文件（压缩包内文件仍只改索引；顶层图库不会被物理删除）"
+                        } else {
+                            "关闭：只调整 App 内的归属/索引，不动源文件"
+                        }
+                    )
+                },
+                trailingContent = {
+                    Switch(
+                        checked = settings.applyToRealFiles,
+                        onCheckedChange = { enabled ->
+                            scope.launch { container.settingsRepository.setApplyToRealFiles(enabled) }
+                        }
+                    )
+                }
+            )
             HorizontalDivider()
             ListItem(
                 headlineContent = { Text("智能清理") },

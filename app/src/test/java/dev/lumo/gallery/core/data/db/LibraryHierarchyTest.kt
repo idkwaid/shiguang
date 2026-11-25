@@ -33,6 +33,29 @@ class LibraryHierarchyTest {
     @After
     fun tearDown() = db.close()
 
+    private fun media(id: String, present: Boolean, favorite: Boolean) = MediaItemEntity(
+        id = id,
+        libraryId = "root",
+        locator = "$id.jpg",
+        docUri = "content://doc/$id",
+        displayName = "$id.jpg",
+        mime = "image/jpeg",
+        sizeBytes = 1L,
+        lastModified = 1L,
+        dateTaken = null,
+        dateSource = null,
+        width = 0,
+        height = 0,
+        orientation = 0,
+        note = null,
+        isFavorite = favorite,
+        isPresent = present,
+        thumbReady = false,
+        phash = null,
+        addedAt = 1L,
+        sortKey = "0000000000$id"
+    )
+
     private fun library(id: String, name: String, parentId: String? = null, private: Boolean = false) =
         LibraryEntity(
             id = id,
@@ -78,6 +101,22 @@ class LibraryHierarchyTest {
         // 子节点不是顶层，不应被当作“重复导入”的根
         val top = db.libraryDao().findAnyTopFolderByUri("content://tree/root")
         assertEquals("root", top?.id)
+    }
+
+    @Test
+    fun purge_removes_absent_non_favorite_only() = runTest {
+        db.libraryDao().upsert(library("root", "ben"))
+        db.mediaDao().upsertAll(
+            listOf(
+                media("a", present = false, favorite = false),
+                media("b", present = false, favorite = true),
+                media("c", present = true, favorite = false)
+            )
+        )
+        val removed = db.mediaDao().deleteAbsentNonFavorite("root")
+        assertEquals(1, removed)
+        assertNotNull(db.mediaDao().getById("b"))
+        assertNotNull(db.mediaDao().getById("c"))
     }
 
     @Test

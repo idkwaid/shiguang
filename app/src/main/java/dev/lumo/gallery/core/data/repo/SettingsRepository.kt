@@ -15,6 +15,7 @@ private val Context.settingsDataStore by preferencesDataStore(name = "lumo_setti
 data class AppSettings(
     val slideshowIntervalSec: Int = 3,
     val thumbnailQuality: ThumbnailQuality = ThumbnailQuality.LOW,
+    val applyToRealFiles: Boolean = true,
     val dynamicColor: Boolean = true,
     val pinHash: String? = null,
     val pinSalt: String? = null,
@@ -32,6 +33,7 @@ class SettingsRepository(private val context: Context) {
         val pinSalt = stringPreferencesKey("pin_salt")
         val biometric = booleanPreferencesKey("biometric_unlock")
         val thumbnailQuality = stringPreferencesKey("thumbnail_quality")
+        val applyToRealFiles = booleanPreferencesKey("apply_to_real_files")
     }
 
     val settings: Flow<AppSettings> = context.settingsDataStore.data.map { prefs ->
@@ -40,11 +42,16 @@ class SettingsRepository(private val context: Context) {
             thumbnailQuality = prefs[Keys.thumbnailQuality]
                 ?.let { runCatching { ThumbnailQuality.valueOf(it) }.getOrNull() }
                 ?: ThumbnailQuality.LOW,
+            applyToRealFiles = prefs[Keys.applyToRealFiles] ?: true,
             dynamicColor = prefs[Keys.dynamicColor] ?: true,
             pinHash = prefs[Keys.pinHash],
             pinSalt = prefs[Keys.pinSalt],
             biometricUnlock = prefs[Keys.biometric] ?: true
         )
+    }
+
+    suspend fun setApplyToRealFiles(enabled: Boolean) {
+        context.settingsDataStore.edit { it[Keys.applyToRealFiles] = enabled }
     }
 
     suspend fun setThumbnailQuality(quality: ThumbnailQuality) {

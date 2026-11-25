@@ -7,7 +7,7 @@
 | # | 功能 | 实现 | 代码位置 | 状态 |
 |---|---|---|---|---|
 | 1.1 | 多源导入：文件夹、文件夹内压缩包、ZIP/RAR/7Z 压缩包 | SAF `OpenDocumentTree` / `OpenDocument`；分组导入会识别选中目录里的 `.zip/.rar/.7z` 并各建虚拟图库；`MediaSource` 抽象统一遍历与读流 | `core/data/source/`、`core/archive/`、`LibraryRepository.addFolderGrouped` | ✅ |
-| 1.2 | 独立图库归类；按嵌套结构建层级图库；压缩包内子目录平铺 | 分组导入镜像目录树：顶层图库 + `parentId` 子图库（可多级）；每节点只扫直接图片；压缩包作为所在目录的子图库 | `LibraryRepository.addFolderGrouped`、`parentId`、DB v3 迁移 | ✅ |
+| 1.2 | 独立图库归类；按嵌套结构建层级图库；父库不含子库图片 | 分组导入镜像目录树；DIRECT 只扫当前目录直接文件（v0.6.0 修复多扫一层的问题）；打开时自动校准 | `LibraryRepository.addFolderGrouped`、`FolderScanner` | ✅ |
 | 1.3 | 严格自然排序 | `NaturalOrder` 比较器 + 入库 `sortKey`（数字补零），SQL 直接按自然序排序 | `core/util/NaturalOrder.kt`、`NaturalSortKey.kt` | ✅ |
 | 1.4 | 全局搜索（图库名 + 文件名 + 标签名） | 图库名 / 图片名 / 标签名三路 LIKE（转义通配符），200ms 防抖，结果分区展示 | `LibraryDao.search`、`MediaDao.search`、`TagDao.search`、`SearchViewModel` | ✅ |
 | 1.5 | 下拉刷新 + 自动监听增删 | 下拉刷新 + ContentObserver + 回前台节流扫描 + WorkManager 6h 周期扫描 | `LibraryScreen`、`LibraryViewModel`、`LibraryScanWorker` | ✅ |
@@ -64,6 +64,17 @@
 |---|---|---|
 | 文件日志 + 轮转 + 崩溃落盘 | `AppLog`（1MB × 3 份，Logcat 同步） | `core/util/AppLog.kt` |
 | 应用内查看/分享/清空 | 设置 → 运行日志 | `feature/logs/LogsScreen.kt` |
+
+## 多选与文件操作（v0.6.0）
+
+| 功能 | 实现 | 位置 |
+|---|---|---|
+| 多选图库 | 首页右上角「多选」→ 批量收藏/移动/删除 | `HomeScreen` |
+| 多选图片/子图库 | 图库页「多选」→ 选择图片或子图库后批量操作 | `LibraryScreen` |
+| 实际文件开关 | 设置 → 移动/删除应用到实际文件夹 | `SettingsRepository`、`LibraryRepository` |
+| 移动图片 | SAF `moveDocument` 真移动；关闭开关则只改索引 | `LibraryRepository.moveImages` |
+| 移动图库 | 同树子图库尝试移动真实文件夹；其余调整层级 | `LibraryRepository.moveLibraries` |
+| 安全删除 | 顶层图库只移除索引；压缩包内部只改索引 | `LibraryRepository.deleteLibraries/deleteImages` |
 
 ## 缩略图与图库卡片（v0.5.0）
 

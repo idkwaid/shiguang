@@ -26,6 +26,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.Casino
+import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Info
@@ -108,6 +113,32 @@ fun LibraryScreen(
     val continueInfo by vm.continueInfo.collectAsStateWithLifecycle()
     val children by vm.children.collectAsStateWithLifecycle()
     val childCovers by vm.childCovers.collectAsStateWithLifecycle()
+    val folderLibraries by vm.folderLibraries.collectAsStateWithLifecycle()
+    val applyToRealFiles by vm.applyToRealFiles.collectAsStateWithLifecycle()
+
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectionKind by remember { mutableStateOf<SelectionKind?>(null) }
+    var selectedImages by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedLibs by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var moveDialog by remember { mutableStateOf(false) }
+    var deleteDialog by remember { mutableStateOf(false) }
+
+    fun clearSelection() {
+        selectionMode = false
+        selectionKind = null
+        selectedImages = emptySet()
+        selectedLibs = emptySet()
+    }
+
+    fun toggleImage(id: String) {
+        selectedImages = if (id in selectedImages) selectedImages - id else selectedImages + id
+    }
+
+    fun toggleLibrary(id: String) {
+        selectedLibs = if (id in selectedLibs) selectedLibs - id else selectedLibs + id
+    }
+
+    val selectedCount = if (selectionKind == SelectionKind.LIBRARIES) selectedLibs.size else selectedImages.size
 
     val unlocked by container.privateAccess.unlocked.collectAsStateWithLifecycle()
     SecureScreen(enabled = library?.isPrivate == true)
@@ -167,6 +198,34 @@ fun LibraryScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
+            if (selectionMode) {
+                TopAppBar(
+                    title = { Text("已选 $selectedCount") },
+                    navigationIcon = {
+                        IconButton(onClick = { clearSelection() }) {
+                            Icon(Icons.Outlined.Close, contentDescription = "取消多选")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = {
+                            if (selectionKind == SelectionKind.LIBRARIES) {
+                                vm.setLibrariesFavorite(selectedLibs, true)
+                            } else {
+                                vm.setImagesFavorite(selectedImages, true)
+                            }
+                            clearSelection()
+                        }) {
+                            Icon(Icons.Outlined.FavoriteBorder, contentDescription = "收藏所选")
+                        }
+                        IconButton(onClick = { moveDialog = true }) {
+                            Icon(Icons.Outlined.DriveFileMove, contentDescription = "移动所选")
+                        }
+                        IconButton(onClick = { deleteDialog = true }) {
+                            Icon(Icons.Outlined.DeleteOutline, contentDescription = "删除所选")
+                        }
+                    }
+                )
+            } else {
             TopAppBar(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -181,6 +240,12 @@ fun LibraryScreen(
                     )
                 },
                 actions = {
+                    IconButton(onClick = {
+                        selectionMode = true
+                        selectionKind = null
+                    }) {
+                        Icon(Icons.Outlined.Checklist, contentDescription = "多选")
+                    }
                     IconButton(onClick = {
                         val childList = children
                         val itemList = items
@@ -233,6 +298,7 @@ fun LibraryScreen(
                     }
                 }
             )
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) }
     ) { padding ->
@@ -308,7 +374,28 @@ fun LibraryScreen(
                                     library = child,
                                     cover = childCovers[child.coverItemId],
                                     onFavoriteToggle = { vm.toggleLibraryFavorite(child) },
-                                    onClick = { onOpenLibrary(child.id) }
+                                    selectionMode = selectionMode,
+                                    selected = selectionKind == SelectionKind.LIBRARIES &&
+                                        child.id in selectedLibs,
+                                    onToggleSelect = {
+                                        if (selectionKind == null) selectionKind = SelectionKind.LIBRARIES
+                                        if (selectionKind == SelectionKind.LIBRARIES) toggleLibrary(child.id)
+                                    },
+                                    onClick = {
+                                        if (selectionMode) {
+                                            if (selectionKind == null) selectionKind = SelectionKind.LIBRARIES
+                                            if (selectionKind == SelectionKind.LIBRARIES) toggleLibrary(child.id)
+                                        } else {
+                                            onOpenLibrary(child.id)
+                                        }
+                                    },
+                                    onLongClick = {
+                                        if (!selectionMode) {
+                                            selectionMode = true
+                                            selectionKind = SelectionKind.LIBRARIES
+                                            toggleLibrary(child.id)
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -326,8 +413,22 @@ fun LibraryScreen(
                             items(items, key = { it.id }) { item ->
                                 PhotoTile(
                                     item = item,
-                                    onClick = { onOpenViewer(libraryId, item.id) },
-                                    onLongClick = { actionItem = item }
+                                    selectionMode = selectionMode,
+                                    selected = selectionKind == SelectionKind.IMAGES &&
+                                        item.id in selectedImages,
+                                    onToggleSelect = {
+                                        if (selectionKind == null) selectionKind = SelectionKind.IMAGES
+                                        if (selectionKind == SelectionKind.IMAGES) toggleImage(item.id)
+                                    },
+                                    onClick = {
+                                        if (selectionMode) {
+                                            if (selectionKind == null) selectionKind = SelectionKind.IMAGES
+                                            if (selectionKind == SelectionKind.IMAGES) toggleImage(item.id)
+                                        } else {
+                                            onOpenViewer(libraryId, item.id)
+                                        }
+                                    },
+                                    onLongClick = { if (!selectionMode) actionItem = item }
                                 )
                             }
                         }
@@ -348,6 +449,85 @@ fun LibraryScreen(
             }
             }
         }
+    }
+
+    if (moveDialog) {
+        val imageMode = selectionKind != SelectionKind.LIBRARIES
+        val destinations = if (imageMode) {
+            folderLibraries.filter { it.id != libraryId }
+        } else {
+            folderLibraries.filter { it.id !in selectedLibs && it.id != libraryId }
+        }
+        AlertDialog(
+            onDismissRequest = { moveDialog = false },
+            title = {
+                Text(if (imageMode) "移动 ${selectedImages.size} 张图片到" else "移动 ${selectedLibs.size} 个图库到")
+            },
+            text = {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    modifier = Modifier.height(360.dp)
+                ) {
+                    if (!imageMode) {
+                        item {
+                            androidx.compose.material3.TextButton(onClick = {
+                                vm.moveLibraries(selectedLibs, null)
+                                moveDialog = false
+                                clearSelection()
+                            }) { Text("顶层（无父图库）") }
+                        }
+                    }
+                    items(destinations.size) { index ->
+                        val target = destinations[index]
+                        androidx.compose.material3.TextButton(onClick = {
+                            if (imageMode) {
+                                vm.moveImages(selectedImages, target.id)
+                            } else {
+                                vm.moveLibraries(selectedLibs, target.id)
+                            }
+                            moveDialog = false
+                            clearSelection()
+                        }) { Text(target.name) }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { moveDialog = false }) { Text("取消") }
+            }
+        )
+    }
+
+    if (deleteDialog) {
+        val imageMode = selectionKind != SelectionKind.LIBRARIES
+        AlertDialog(
+            onDismissRequest = { deleteDialog = false },
+            title = {
+                Text(if (imageMode) "移除 ${selectedImages.size} 张图片？" else "移除 ${selectedLibs.size} 个图库？")
+            },
+            text = {
+                Text(
+                    if (applyToRealFiles) {
+                        if (imageMode) {
+                            "已开启「应用到实际文件夹」：文件夹里的图片会删除源文件（不可恢复）；压缩包内图片只移除索引。"
+                        } else {
+                            "已开启「应用到实际文件夹」：子图库会删除实际文件夹（不可恢复）；顶层图库只移除索引。"
+                        }
+                    } else {
+                        "只移除 App 内的索引/归属，不动手机里的文件。"
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (imageMode) vm.deleteImages(selectedImages) else vm.deleteLibraries(selectedLibs)
+                    deleteDialog = false
+                    clearSelection()
+                }) { Text("移除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteDialog = false }) { Text("取消") }
+            }
+        )
     }
 
     actionItem?.let { item ->
@@ -468,7 +648,7 @@ fun LibraryScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    vm.deleteItem(item, deleteFromDisk = !isArchive)
+                    vm.deleteItem(item, deleteFromDisk = !isArchive && applyToRealFiles)
                     deleteTarget = null
                 }) { Text("删除", color = MaterialTheme.colorScheme.error) }
             },
@@ -511,11 +691,19 @@ fun LibraryScreen(
         AlertDialog(
             onDismissRequest = { confirmRemove = false },
             title = { Text("从图库移除？") },
-            text = { Text("只移除索引与缩略图，手机里的原图不会被删除。") },
+            text = {
+                Text(
+                    if (applyToRealFiles) {
+                        "已开启「应用到实际文件夹」：子图库会尝试删除实际文件夹；顶层图库只移除索引，不动你授权的整棵目录。"
+                    } else {
+                        "只移除索引与缩略图，手机里的原图不会被删除。"
+                    }
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     confirmRemove = false
-                    vm.removeLibrary(onDone = onBack)
+                    vm.deleteLibraryTree(onDone = onBack)
                 }) { Text("移除") }
             },
             dismissButton = {
@@ -583,3 +771,6 @@ private fun ImageInfoDialog(
         }
     )
 }
+
+
+private enum class SelectionKind { IMAGES, LIBRARIES }

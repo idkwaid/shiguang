@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.FolderZip
@@ -54,6 +55,8 @@ fun LibraryCard(
     modifier: Modifier = Modifier,
     childCount: Int = 0,
     onFavoriteToggle: () -> Unit = {},
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null
 ) {
@@ -134,6 +137,22 @@ fun LibraryCard(
                         .align(Alignment.BottomEnd)
                         .padding(6.dp)
                 )
+
+                if (selected) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0x552B2B2B))
+                    )
+                    Icon(
+                        imageVector = Icons.Outlined.CheckCircle,
+                        contentDescription = "已选择",
+                        tint = Color.White,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(30.dp)
+                    )
+                }
             }
 
             Row(
@@ -204,7 +223,11 @@ fun LibraryTile(
     modifier: Modifier = Modifier,
     childCount: Int = 0,
     onFavoriteToggle: () -> Unit = {},
-    onClick: () -> Unit
+    selectionMode: Boolean = false,
+    selected: Boolean = false,
+    onToggleSelect: () -> Unit = {},
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
 ) {
     val container = LocalAppContainer.current
     val coverFile = cover?.let {
@@ -214,7 +237,10 @@ fun LibraryTile(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = { if (selectionMode) onToggleSelect() else onClick() },
+                onLongClick = onLongClick
+            )
             .padding(bottom = 4.dp)
     ) {
         Box(
@@ -248,13 +274,15 @@ fun LibraryTile(
                     .align(Alignment.TopEnd)
                     .padding(6.dp)
             )
-            LibraryFavoriteButton(
-                favorite = library.isFavorite,
-                onToggle = onFavoriteToggle,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(4.dp)
-            )
+            if (!selectionMode) {
+                LibraryFavoriteButton(
+                    favorite = library.isFavorite,
+                    onToggle = onFavoriteToggle,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(4.dp)
+                )
+            }
             if (library.isPrivate) {
                 Icon(
                     Icons.Outlined.Lock,
@@ -264,6 +292,21 @@ fun LibraryTile(
                         .align(Alignment.TopStart)
                         .padding(6.dp)
                         .size(14.dp)
+                )
+            }
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0x552B2B2B))
+                )
+                Icon(
+                    imageVector = Icons.Outlined.CheckCircle,
+                    contentDescription = "已选择",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(30.dp)
                 )
             }
         }

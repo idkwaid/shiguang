@@ -76,7 +76,7 @@ class FolderScanner(
                 treeUri = treeUri,
                 startDocId = startDocId ?: DocumentsContract.getTreeDocumentId(treeUri),
                 startRelPath = library.treeRootRelPath.orEmpty(),
-                maxDepth = if (library.scanMode == ScanMode.DIRECT.name) 1 else Int.MAX_VALUE
+                maxDepth = if (library.scanMode == ScanMode.DIRECT.name) 0 else Int.MAX_VALUE
             ) { scanned ->
                 progressBus.update(
                     ScanProgress(
@@ -133,12 +133,23 @@ class FolderScanner(
         )
 
         val result = indexer.index(libraryId, entries)
+        if (library.scanMode == ScanMode.DIRECT.name) {
+            // 修正历史错误数据：分组节点不应包含子目录图片
+            val purged = db.mediaDao().deleteAbsentNonFavorite(libraryId)
+            if (purged > 0) AppLog.i("Scan", "清理分组图库里残留的子目录图片 library=$libraryId count=$purged")
+        }
+        var cover = result.coverItemId ?: library.coverItemId
+        if (cover != null && db.mediaDao().getById(cover)?.isPresent != true) cover = null
+        if (cover == null) {
+            cover = db.mediaDao().firstPresent(libraryId)?.id
+                ?: db.libraryDao().getChildren(libraryId).firstOrNull { it.coverItemId != null }?.coverItemId
+        }
 
         db.libraryDao().updateScanResult(
             id = libraryId,
             lastScanAt = System.currentTimeMillis(),
             itemCount = result.count,
-            coverItemId = result.coverItemId,
+            coverItemId = cover,
             scanStatus = ScanStatus.OK.name,
             lastError = null,
             isAvailable = true

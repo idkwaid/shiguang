@@ -20,6 +20,11 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Casino
+import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Sell
 import androidx.compose.material.icons.outlined.Search
@@ -74,7 +79,13 @@ fun HomeScreen(
     val tags by vm.tags.collectAsStateWithLifecycle()
     val importStatus by vm.importStatus.collectAsStateWithLifecycle()
     val childCounts by vm.childCounts.collectAsStateWithLifecycle()
+    val folderLibraries by vm.folderLibraries.collectAsStateWithLifecycle()
+    val applyToRealFiles by vm.applyToRealFiles.collectAsStateWithLifecycle()
     var folderChoice by remember { mutableStateOf<Uri?>(null) }
+    var selectionMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var moveDialog by remember { mutableStateOf(false) }
+    var deleteDialog by remember { mutableStateOf(false) }
 
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -98,9 +109,43 @@ fun HomeScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
+            if (selectionMode) {
+                TopAppBar(
+                    title = { Text("已选 ${selectedIds.size} 个图库") },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            selectionMode = false
+                            selectedIds = emptySet()
+                        }) {
+                            Icon(Icons.Outlined.Close, contentDescription = "取消多选")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = {
+                            vm.setLibrariesFavorite(selectedIds, true)
+                            selectionMode = false
+                            selectedIds = emptySet()
+                        }) {
+                            Icon(Icons.Outlined.FavoriteBorder, contentDescription = "收藏所选图库")
+                        }
+                        IconButton(onClick = { moveDialog = true }) {
+                            Icon(Icons.Outlined.DriveFileMove, contentDescription = "移动所选图库")
+                        }
+                        IconButton(onClick = { deleteDialog = true }) {
+                            Icon(Icons.Outlined.DeleteOutline, contentDescription = "删除所选图库")
+                        }
+                    }
+                )
+            } else {
             TopAppBar(
                 title = { Text("拾光", style = MaterialTheme.typography.headlineSmall) },
                 actions = {
+                    IconButton(onClick = {
+                        selectionMode = true
+                        selectedIds = emptySet()
+                    }) {
+                        Icon(Icons.Outlined.Checklist, contentDescription = "多选图库")
+                    }
                     if (privateLibraries.isNotEmpty()) {
                         IconButton(onClick = onOpenPrivate) {
                             Icon(Icons.Outlined.Lock, contentDescription = "私密空间")
@@ -128,10 +173,11 @@ fun HomeScreen(
                     }
                 }
             )
+            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
+            if (!selectionMode) ExtendedFloatingActionButton(
                 onClick = { folderLauncher.launch(null) },
                 icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
                 text = { Text(if (busy) "正在导入…" else "添加文件夹") }
@@ -209,14 +255,87 @@ fun HomeScreen(
                         scanning = scanStates[library.id],
                         childCount = childCounts[library.id] ?: 0,
                         onFavoriteToggle = { vm.toggleLibraryFavorite(library) },
-                        onClick = { onOpenLibrary(library.id) },
-                        onLongClick = { actionTarget = library }
+                        selectionMode = selectionMode,
+                        selected = library.id in selectedIds,
+                        onClick = {
+                            if (selectionMode) {
+                                selectedIds = if (library.id in selectedIds) {
+                                    selectedIds - library.id
+                                } else {
+                                    selectedIds + library.id
+                                }
+                            } else {
+                                onOpenLibrary(library.id)
+                            }
+                        },
+                        onLongClick = { if (!selectionMode) actionTarget = library }
                     )
                 }
             }
             }
         }
         }
+    }
+
+    if (moveDialog) {
+        AlertDialog(
+            onDismissRequest = { moveDialog = false },
+            title = { Text("移动 ${selectedIds.size} 个图库到") },
+            text = {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    modifier = Modifier.height(360.dp)
+                ) {
+                    item {
+                        androidx.compose.material3.TextButton(onClick = {
+                            vm.moveLibraries(selectedIds, null)
+                            moveDialog = false
+                            selectionMode = false
+                            selectedIds = emptySet()
+                        }) { Text("顶层（无父图库）") }
+                    }
+                    items(folderLibraries.filter { it.id !in selectedIds }.size) { index ->
+                        val target = folderLibraries.filter { it.id !in selectedIds }[index]
+                        androidx.compose.material3.TextButton(onClick = {
+                            vm.moveLibraries(selectedIds, target.id)
+                            moveDialog = false
+                            selectionMode = false
+                            selectedIds = emptySet()
+                        }) { Text(target.name) }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { moveDialog = false }) { Text("取消") }
+            }
+        )
+    }
+
+    if (deleteDialog) {
+        AlertDialog(
+            onDismissRequest = { deleteDialog = false },
+            title = { Text("移除 ${selectedIds.size} 个图库？") },
+            text = {
+                Text(
+                    if (applyToRealFiles) {
+                        "已开启「应用到实际文件夹」：子图库会尝试删除实际文件夹（不可恢复）；顶层图库只移除索引。"
+                    } else {
+                        "只移除 App 内的索引与缩略图，不动手机里的文件。"
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.deleteLibraries(selectedIds)
+                    deleteDialog = false
+                    selectionMode = false
+                    selectedIds = emptySet()
+                }) { Text("移除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteDialog = false }) { Text("取消") }
+            }
+        )
     }
 
     folderChoice?.let { uri ->

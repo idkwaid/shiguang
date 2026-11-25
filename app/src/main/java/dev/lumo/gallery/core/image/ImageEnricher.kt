@@ -46,6 +46,17 @@ class ImageEnricher(
         jobs.remove(libraryId)?.cancel()
     }
 
+    /**
+     * 用户打开图库时调用：取消其他图库的后台缩略图任务，把解码能力集中到当前图库，
+     * 避免批量导入 80+ 个图库时“打开子库还要排在队尾”。
+     */
+    fun prioritize(libraryId: String) {
+        jobs.keys.toList().filter { it != libraryId }.forEach { id ->
+            jobs.remove(id)?.cancel()
+        }
+        enqueue(libraryId)
+    }
+
     private suspend fun enrich(libraryId: String) {
         AppLog.d("Thumb", "开始富化 library=$libraryId")
         val libraryEntity = db.libraryDao().getById(libraryId) ?: return
