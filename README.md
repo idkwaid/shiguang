@@ -1,5 +1,10 @@
 # 拾光（Lumo）· 本地私人沉浸式相册管理器
 
+[![Android CI](https://github.com/idkwaid/shiguang/actions/workflows/android.yml/badge.svg)](https://github.com/idkwaid/shiguang/actions/workflows/android.yml)
+[![Latest Release](https://img.shields.io/github/v/release/idkwaid/shiguang?include_prereleases)](https://github.com/idkwaid/shiguang/releases)
+
+> 仓库：<https://github.com/idkwaid/shiguang> · 每次 push 自动构建 APK（Actions → Artifacts），打 `v*` tag 会自动发布 Release 并附 APK。
+
 一个**完全本地运行**的 Android 相册 App：把手机里的文件夹或 ZIP / RAR / 7Z 压缩包加进来，用瀑布流和沉浸式全屏浏览，支持收藏、标签、那年今日、随机回忆、EXIF、智能清理、轻量编辑、私密图库与防截屏。
 
 不联网、不上传、不依赖云服务；图片索引和缩略图都在本机。
@@ -24,6 +29,12 @@
 | v0.6.0 | 修复父图库混入子库图片（2620 张）；子图库缩略图优先解码；多选图库/图片；移动与删除可应用到实际文件夹 | ✅ |
 
 功能逐条对照见 [docs/FEATURES.md](docs/FEATURES.md)，真机验收见 [docs/QA-checklist.md](docs/QA-checklist.md)。
+
+## 自动构建 / 下载 APK
+
+- 每次推送到 `main`：GitHub Actions 自动跑单元测试并构建 `app-debug.apk`，在 Actions 运行页的 **Artifacts → shiguang-debug-apk** 下载。
+- 推送 `v*` tag：自动创建 GitHub Release，并把 APK 作为附件上传。
+- 详细说明见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
 ## 环境自举（本仓库自带工具链，不污染系统）
 
